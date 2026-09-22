@@ -6,10 +6,14 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi[standard]>=0.141.1",
+    "google-genai>=1.0.0",
     "pydantic>=2.12.0",
     "pypdf>=6.0.0",
+    "pyperclip>=1.9.0",
+    "python-dotenv>=1.0.0",
     "rich>=14.0.0",
     "typer>=0.15.0",
+    "typst>=0.15.0",
 ]
 
 [project.scripts]
