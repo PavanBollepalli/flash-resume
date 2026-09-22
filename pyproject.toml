@@ -1,0 +1,32 @@
+[project]
+name = "flash-resume"
+version = "0.1.0"
+description = "Fast, ATS-focused resume tailoring and PDF generation."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.141.1",
+    "pydantic>=2.12.0",
+    "pypdf>=6.0.0",
+    "rich>=14.0.0",
+    "typer>=0.15.0",
+]
+
+[project.scripts]
+fs = "flash_resume.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flash_resume"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
