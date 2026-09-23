@@ -151,13 +151,19 @@
         align: (left, right),
         [
           #text(weight: "bold")[#proj.name]
-          #if proj.at("link", default: none) != none and proj.link != "" [
-            #h(0.3em)#text(size: font-size - 1.5pt)[(#link(proj.link)[link])]
-          ]
         ],
         [
           #if proj.at("start_date", default: none) != none and proj.at("end_date", default: none) != none [
             #text(weight: "bold")[#proj.start_date -- #proj.end_date]
+          ]
+          #if proj.at("github", default: none) != none and proj.github != "" [
+            #h(0.35em) #link(proj.github)[GitHub]
+          ]
+          #if proj.at("live_url", default: none) != none and proj.live_url != "" [
+            #h(0.35em) #link(proj.live_url)[Live]
+          ]
+          #if proj.at("github", default: none) == none and proj.at("live_url", default: none) == none and proj.at("link", default: none) != none and proj.link != "" [
+            #h(0.35em) #link(proj.link)[Link]
           ]
         ]
       )

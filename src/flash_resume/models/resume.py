@@ -50,6 +50,8 @@ class ProjectItem(BaseModel):
     end_date: Optional[str] = Field(default=None, description="End date or 'Present'")
     technologies: List[str] = Field(default_factory=list, description="Key tech stack tools used")
     link: Optional[str] = Field(default=None, description="GitHub link or live deployment URL")
+    github: Optional[str] = Field(default=None, description="GitHub repository URL")
+    live_url: Optional[str] = Field(default=None, description="Live project or deployment URL")
     bullets: List[str] = Field(
         default_factory=list,
         description="Project accomplishment bullets describing challenges and outcomes",
