@@ -76,6 +76,7 @@ class MasterResume(BaseModel):
     contact: ContactInfo
     summary: Optional[str] = Field(default=None, description="Short targeted 2-3 line professional bio")
     highlights: List[str] = Field(default_factory=list, description="One or two quantified differentiators")
+    awards: List[str] = Field(default_factory=list, description="Awards and notable achievements")
     skills: List[SkillCategory] = Field(default_factory=list, description="Categorized technical competencies")
     experience: List[ExperienceItem] = Field(default_factory=list, description="Chronological work history")
     projects: List[ProjectItem] = Field(default_factory=list, description="Highlighted technical projects")

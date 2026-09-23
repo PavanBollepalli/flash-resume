@@ -91,9 +91,9 @@
     #if contact.at("email", default: "") != "" [
       #h(0.35em) | #h(0.35em) #link("mailto:" + contact.email)[#contact.email]
     ]
-    #contact-link(contact.at("linkedin", default: none), "LinkedIn")
-    #contact-link(contact.at("github", default: none), "GitHub")
-    #contact-link(contact.at("portfolio", default: none), "Portfolio")
+    #contact-link(contact.at("linkedin", default: none), contact.at("linkedin", default: ""))
+    #contact-link(contact.at("github", default: none), contact.at("github", default: ""))
+    #contact-link(contact.at("portfolio", default: none), contact.at("portfolio", default: ""))
   ]
   #v(3pt)
 ]
@@ -203,9 +203,10 @@
   ]
 ]
 
-#if resume.at("certifications", default: ()).len() > 0 [
-  #section-header("Certifications")
-  #resume.certifications.join("  |  ")
+#if resume.at("awards", default: ()).len() > 0 or resume.at("certifications", default: ()).len() > 0 [
+  #section-header("Awards & Certifications")
+  #let award-items = resume.at("awards", default: ()) + resume.at("certifications", default: ())
+  #award-items.join("  |  ")
 ]
 
 // Content lint: things a static schema can't enforce but shouldn't ship
