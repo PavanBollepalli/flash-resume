@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Output artifacts
+output/
+*.pdf
+*.temp.*
+.env

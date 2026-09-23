@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Flash Resume - 1-Click ATS Tailor",
+  "version": "1.0.0",
+  "description": "Tailor your resume for any open job post and download a verified 1-page PDF in seconds.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Flash Resume"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
+

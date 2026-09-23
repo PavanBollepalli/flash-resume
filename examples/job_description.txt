@@ -1,0 +1,20 @@
+Backend Software Engineer - Datadog
+
+About the Role:
+We are seeking a talented Backend Software Engineer to join our Core Infrastructure team. You will design, build, and maintain high-throughput distributed microservices handling telemetry and observability data at massive scale.
+
+Key Responsibilities:
+- Design and implement highly reliable REST and gRPC microservices using Python and Go.
+- Optimize distributed storage systems, relational databases (PostgreSQL), and key-value datastores (Redis).
+- Build and maintain CI/CD pipelines, containerized deployments using Docker and Kubernetes in AWS cloud environments.
+- Drive latency optimization, p99 tail latency reduction, and observability monitoring using Prometheus/Grafana.
+- Collaborate with product and platform teams to ensure 99.99% service availability.
+
+Requirements & Qualifications:
+- 2+ years of professional software engineering experience.
+- Strong proficiency in Python (FastAPI / Django) or Go.
+- Experience with PostgreSQL, query tuning, and Redis caching.
+- Hands-on experience with cloud infrastructure (AWS) and containers (Docker, Kubernetes).
+- Familiarity with CI/CD automation, distributed systems, and Kafka or message queues is a big plus.
+- Bachelor's degree in Computer Science or equivalent practical experience.
+

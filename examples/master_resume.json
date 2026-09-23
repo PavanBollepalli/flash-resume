@@ -1,0 +1,97 @@
+{
+  "contact": {
+    "name": "Alex Chen",
+    "title": "Full Stack Software Engineer",
+    "email": "alex.chen@example.com",
+    "phone": "+1 (555) 234-5678",
+    "location": "San Francisco, CA",
+    "linkedin": "linkedin.com/in/alexchen-dev",
+    "github": "github.com/alexchen",
+    "portfolio": "alexchen.dev"
+  },
+  "summary": "Full Stack Engineer with 3+ years of experience designing high-throughput REST and GraphQL APIs, distributed backends, and responsive React web applications. Proven track record improving API response latency by 45% and optimizing database queries for millions of daily active users.",
+  "skills": [
+    {
+      "category": "Languages",
+      "items": ["Python", "TypeScript", "JavaScript", "Go", "SQL", "HTML/CSS"]
+    },
+    {
+      "category": "Frameworks & Libraries",
+      "items": ["FastAPI", "React", "Next.js", "Node.js", "Django", "Tailwind CSS"]
+    },
+    {
+      "category": "Databases & Cloud",
+      "items": ["PostgreSQL", "Redis", "MongoDB", "AWS (S3, Lambda, ECS)", "Docker", "Kubernetes"]
+    },
+    {
+      "category": "Developer Tools",
+      "items": ["Git", "GitHub Actions", "CI/CD", "Linux", "Pytest", "Jest"]
+    }
+  ],
+  "experience": [
+    {
+      "id": "exp_cloudscale_swe",
+      "company": "CloudScale Technologies",
+      "role": "Software Engineer",
+      "location": "San Francisco, CA",
+      "start_date": "Aug 2022",
+      "end_date": "Present",
+      "bullets": [
+        "Architected scalable backend microservices using FastAPI and PostgreSQL, serving 12M+ monthly API requests with 99.98% uptime.",
+        "Implemented Redis distributed caching layer, reducing p99 API response latencies from 320ms to 48ms across key search endpoints.",
+        "Engineered automated CI/CD deployment pipelines using GitHub Actions and Docker, reducing team deployment cycle time by 40%.",
+        "Collaborated with cross-functional product and frontend teams to migrate monolithic legacy codebase into modular, decoupled services."
+      ]
+    },
+    {
+      "id": "exp_nexustech_intern",
+      "company": "NexusTech Labs",
+      "role": "Software Engineering Intern",
+      "location": "San Jose, CA",
+      "start_date": "May 2021",
+      "end_date": "Aug 2021",
+      "bullets": [
+        "Developed customer-facing dashboard components in React and TypeScript, improving user engagement metrics by 28%.",
+        "Integrated third-party payment gateway and webhook reconciliation system with end-to-end transactional test coverage."
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj_vector_search",
+      "name": "FlashSearch Engine",
+      "technologies": ["Python", "FastAPI", "PostgreSQL", "pgvector", "Docker"],
+      "link": "github.com/alexchen/flashsearch",
+      "bullets": [
+        "Engineered high-performance semantic search engine using FastAPI and pgvector, indexing over 500K documents with sub-60ms query response.",
+        "Constructed asynchronous document ingestion pipeline processing multi-format files with automated keyword extraction and chunking."
+      ]
+    },
+    {
+      "id": "proj_task_orchestrator",
+      "name": "Distributed Job Scheduler",
+      "technologies": ["Go", "Redis", "Docker", "Prometheus"],
+      "link": "github.com/alexchen/job-orchestrator",
+      "bullets": [
+        "Built distributed task queue in Go backed by Redis Streams, supporting priority scheduling and automatic retry with exponential backoff.",
+        "Configured real-time system telemetry and Grafana dashboards tracking throughput, queue depth, and worker heartbeats."
+      ]
+    }
+  ],
+  "education": [
+    {
+      "institution": "University of California, Berkeley",
+      "degree": "B.S.",
+      "field_of_study": "Computer Science",
+      "start_date": "2018",
+      "end_date": "2022",
+      "gpa": "3.85",
+      "highlights": ["Data Structures", "Algorithms", "Operating Systems", "Database Systems"]
+    }
+  ],
+  "certifications": [
+    "AWS Certified Solutions Architect – Associate",
+    "Certified Kubernetes Application Developer (CKAD)"
+  ]
+}
+
