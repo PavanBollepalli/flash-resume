@@ -309,7 +309,7 @@ def tailor_cmd(
 
     if dry_run:
         console.print("[bold yellow]⚡ Running in DRY-RUN mode (Simulated ATS optimization)...[/bold yellow]")
-        from flash_resume.models.tailoring import BulletEdit, SkillUpdate, TailorPlan
+        from flash_resume.models.tailoring import TailorPlan
         from flash_resume.services.tailor import apply_tailor_plan, generate_diff_markdown
 
         resume_path = Path(cfg.master_resume_path)
@@ -323,25 +323,8 @@ def tailor_cmd(
             ats_match_score=94,
             matched_keywords=["FastAPI", "PostgreSQL", "Docker", "Redis", "Distributed Systems"],
             missing_keywords=["Kafka"],
-            skill_updates=[
-                SkillUpdate(
-                    category="Frameworks & Libraries",
-                    original_items=master_resume.skills[1].items if len(master_resume.skills) > 1 else [],
-                    updated_items=(master_resume.skills[1].items if len(master_resume.skills) > 1 else []) + ["gRPC"],
-                    added_keywords=["gRPC"],
-                )
-            ],
-            bullet_edits=[
-                BulletEdit(
-                    section="Experience",
-                    item_id=master_resume.experience[0].id if master_resume.experience else "",
-                    bullet_index=0,
-                    original_text=master_resume.experience[0].bullets[0] if master_resume.experience and master_resume.experience[0].bullets else "",
-                    replacement_text="Diagnosed and resolved a production SQL performance issue in replicated datasets, cutting query execution time by ~25% through root-cause analysis, composite indexing, and query restructuring",
-                    keywords_added=["distributed backend", "FastAPI"],
-                    word_count_delta=0,
-                )
-            ],
+            skill_updates=[],
+            bullet_edits=[],
         )
 
         compiler = CompilerService()
