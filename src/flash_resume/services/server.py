@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from flash_resume.config import load_config
+from flash_resume.config import load_config, save_config
 from flash_resume.models.resume import MasterResume
 from flash_resume.services.tailor import TailorEngine
 
@@ -34,6 +34,10 @@ class TailorRequest(BaseModel):
     jd: str = Field(description="Job description text extracted from page DOM")
     company: Optional[str] = Field(default=None, description="Optional detected company name")
     role: Optional[str] = Field(default=None, description="Optional detected role/title")
+
+
+class ApiKeyRequest(BaseModel):
+    api_key: str = Field(min_length=1, description="Gemini API key to persist in local config")
 
 
 class TailorResponse(BaseModel):
@@ -72,6 +76,15 @@ def get_status():
         "output_dir": cfg.output_dir,
         "has_api_key": bool(cfg.resolve_api_key()),
     }
+
+
+@app.post("/api/config/key")
+def set_api_key(req: ApiKeyRequest):
+    """Persist a Gemini API key supplied by the browser extension onboarding."""
+    cfg = load_config()
+    cfg.gemini_api_key = req.api_key.strip()
+    save_config(cfg)
+    return {"success": True, "detail": "API key saved to local Flash Resume config."}
 
 
 @app.post("/api/tailor", response_model=TailorResponse)

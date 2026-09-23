@@ -5,23 +5,53 @@ const API_BASE = "http://127.0.0.1:8000";
 let currentPdfBase64 = null;
 let currentFilename = "Tailored_Resume.pdf";
 
+function openOnboarding() {
+  chrome.tabs.create({ url: chrome.runtime.getURL("onboarding.html") });
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   const statusBadge = document.getElementById("statusBadge");
   const statusText = document.getElementById("statusText");
   const offlineNotice = document.getElementById("offlineNotice");
+  const setupCard = document.getElementById("setupCard");
   const tailorBtn = document.getElementById("tailorBtn");
   const companyInput = document.getElementById("companyInput");
   const roleInput = document.getElementById("roleInput");
   const jdInput = document.getElementById("jdInput");
+  const guideView = document.getElementById("guideView");
+
+  // Onboarding entry points
+  document.getElementById("openOnboardingBtn").addEventListener("click", openOnboarding);
+  document.getElementById("openSetupLink").addEventListener("click", openOnboarding);
+
+  // How-to guide toggle
+  const toggleGuide = () => {
+    guideView.style.display = guideView.style.display === "block" ? "none" : "block";
+  };
+  document.getElementById("guideToggle").addEventListener("click", toggleGuide);
+  document.getElementById("reopenGuide").addEventListener("click", toggleGuide);
+
+  // First-run: show setup card and auto-open guide until onboarded
+  chrome.storage.local.get("fr_onboarded", (data) => {
+    if (!data.fr_onboarded) {
+      setupCard.style.display = "block";
+      guideView.style.display = "block";
+    }
+  });
 
   // 1. Check Server Status
+  let engineOnline = false;
   try {
     const res = await fetch(`${API_BASE}/api/status`);
     if (res.ok) {
       const data = await res.json();
+      engineOnline = true;
       statusBadge.classList.remove("offline");
       statusText.textContent = data.candidate_name ? `${data.candidate_name} (Ready)` : "Engine Ready";
       offlineNotice.style.display = "none";
+      if (!data.has_api_key) {
+        setupCard.style.display = "block";
+      }
     } else {
       throw new Error("Server error");
     }
@@ -30,25 +60,49 @@ document.addEventListener("DOMContentLoaded", async () => {
     statusText.textContent = "Offline";
     offlineNotice.style.display = "block";
     tailorBtn.disabled = true;
+    setupCard.style.display = "block";
   }
 
   // 2. Extract Job from Active Tab
+  // Content script responds first; if the tab was opened before the extension
+  // (re)loaded, the content script is not injected, so fall back to
+  // chrome.scripting.executeScript which always works on the active tab.
+  const fillForm = (response) => {
+    if (!response) return;
+    if (response.company && !companyInput.value) {
+      companyInput.value = response.company;
+    }
+    if (response.title && !roleInput.value) {
+      roleInput.value = response.title;
+    }
+    if (response.jd && !jdInput.value) {
+      jdInput.value = response.jd;
+    }
+  };
+
+  const extractViaScripting = async (tabId) => {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: extractJobDetailsInPage,
+      });
+      if (results && results[0] && results[0].result) {
+        fillForm(results[0].result);
+      }
+    } catch (e) {
+      console.warn("Scripting extraction failed:", e);
+    }
+  };
+
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id) {
       chrome.tabs.sendMessage(tab.id, { action: "extract_job" }, (response) => {
         if (chrome.runtime.lastError || !response) {
+          extractViaScripting(tab.id);
           return;
         }
-        if (response.company && !companyInput.value) {
-          companyInput.value = response.company;
-        }
-        if (response.title && !roleInput.value) {
-          roleInput.value = response.title;
-        }
-        if (response.jd && !jdInput.value) {
-          jdInput.value = response.jd;
-        }
+        fillForm(response);
       });
     }
   } catch (e) {
@@ -91,6 +145,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       // Switch to results view
       document.getElementById("tailorForm").style.display = "none";
+      guideView.style.display = "none";
       const resultView = document.getElementById("resultView");
       resultView.style.display = "block";
 
@@ -108,7 +163,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (error) {
       alert("Error: " + error.message);
     } finally {
-      tailorBtn.disabled = false;
+      tailorBtn.disabled = !engineOnline;
       btnSpinner.style.display = "none";
       btnText.textContent = "⚡ Tailor 1-Page Resume";
     }
@@ -133,6 +188,43 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 });
 
+// Self-contained extractor injected via chrome.scripting when the content
+// script is not present (e.g. tabs opened before the extension was loaded).
+function extractJobDetailsInPage() {
+  const url = window.location.href;
+  let title = "";
+  let company = "";
+  let jd = "";
+
+  if (url.includes("linkedin.com")) {
+    title = document.querySelector(".job-details-jobs-unified-top-card__job-title, .topcard__title, h1")?.innerText?.trim() || "";
+    company = document.querySelector(".job-details-jobs-unified-top-card__company-name, .topcard__org-name-link, .jobs-unified-top-card__company-name")?.innerText?.trim() || "";
+    jd = document.querySelector("#job-details, .jobs-description__content, .description__text")?.innerText?.trim() || "";
+  } else if (url.includes("indeed.com")) {
+    title = document.querySelector(".jobsearch-JobInfoHeader-title, h1")?.innerText?.trim() || "";
+    company = document.querySelector("[data-company-name='true'], .jobsearch-InlineCompanyRating-companyHeader")?.innerText?.trim() || "";
+    jd = document.querySelector("#jobDescriptionText, .jobsearch-jobDescriptionText")?.innerText?.trim() || "";
+  } else if (url.includes("greenhouse.io") || url.includes("lever.co")) {
+    title = document.querySelector(".app-title, .posting-headline h2, h1")?.innerText?.trim() || "";
+    company = document.querySelector(".company-name, .main-header-logo, .posting-headline")?.innerText?.trim() || "";
+    jd = document.querySelector("#content, .section-wrapper, .posting-description")?.innerText?.trim() || "";
+  }
+
+  const selectedText = window.getSelection().toString().trim();
+  if (selectedText.length > 50) {
+    jd = selectedText;
+  }
+
+  if (!jd) {
+    const mainEl = document.querySelector("article, main, .job-description, .description");
+    if (mainEl) {
+      jd = mainEl.innerText.trim();
+    }
+  }
+
+  return { title, company, jd };
+}
+
 function b64toBlob(b64Data, contentType = "", sliceSize = 512) {
   const byteCharacters = atob(b64Data);
   const byteArrays = [];
@@ -149,4 +241,3 @@ function b64toBlob(b64Data, contentType = "", sliceSize = 512) {
 
   return new Blob(byteArrays, { type: contentType });
 }
-
