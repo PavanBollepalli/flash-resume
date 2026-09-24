@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Flash Resume - 1-Click ATS Tailor",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Tailor your resume for any open job post and download a verified 1-page PDF in seconds.",
   "permissions": [
     "activeTab",

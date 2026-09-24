@@ -6,9 +6,8 @@ let currentPdfBase64 = null;
 let currentFilename = "Tailored_Resume.pdf";
 let outputDir = "";
 
-function openOnboarding() {
-  chrome.tabs.create({ url: chrome.runtime.getURL("onboarding.html") });
-}
+// Config is owned by the server (set via `fs setup`); the browser no longer
+// runs its own setup wizard.
 
 document.addEventListener("DOMContentLoaded", async () => {
   const statusBadge = document.getElementById("statusBadge");
@@ -21,21 +20,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   const jdInput = document.getElementById("jdInput");
   const guideView = document.getElementById("guideView");
 
-  // Onboarding entry points
-  document.getElementById("openOnboardingBtn").addEventListener("click", openOnboarding);
-  document.getElementById("openSetupLink").addEventListener("click", openOnboarding);
+  // Onboarding entry points (server owns config now; these are inert).
+  const openSetupLink = document.getElementById("openSetupLink");
+  if (openSetupLink) openSetupLink.style.display = "none";
+  const openOnboardingBtn = document.getElementById("openOnboardingBtn");
+  if (openOnboardingBtn) openOnboardingBtn.style.display = "none";
 
-  // How-to guide toggle
+  // How-to guide toggle (closing it marks the user as onboarded)
   const toggleGuide = () => {
     guideView.style.display = guideView.style.display === "block" ? "none" : "block";
+    chrome.storage.local.set({ fr_onboarded: true });
   };
   document.getElementById("guideToggle").addEventListener("click", toggleGuide);
   document.getElementById("reopenGuide").addEventListener("click", toggleGuide);
 
-  // First-run: show setup card and auto-open guide until onboarded
+  // First-run: auto-open the guide until onboarded. (The setup card is shown
+  // from the status check below only when the server reports a missing key.)
   chrome.storage.local.get("fr_onboarded", (data) => {
     if (!data.fr_onboarded) {
-      setupCard.style.display = "block";
       guideView.style.display = "block";
     }
   });

@@ -31,9 +31,10 @@ fs setup
 
 This interactive command:
 1. Asks you to pick an AI provider (**Gemini** quality or **Groq** speed) and enter your free API key
-2. Sets up your master resume (runs the init wizard if needed)
-3. Registers the engine to **start silently at Windows logon** — no terminal ever needed again
-4. Copies the Chrome extension to a stable folder and tells you where to Load-unpack it
+2. Chooses the **folder where tailored PDFs are saved**
+3. Sets up your master resume (runs the init wizard if needed)
+4. Registers the engine to **start silently at Windows logon** — no terminal ever needed again
+5. Copies the Chrome extension to a stable folder and tells you where to Load-unpack it
 
 ### 3. Load the Extension (Once)
 
@@ -122,12 +123,16 @@ uv run fs tailor --out ./applications/2026/
 
 ## 🧩 Chrome Extension (1-Click Tailor)
 
-After `fs setup`, the companion engine runs silently in the background. The extension just talks to it:
+After `fs setup`, the companion engine runs silently in the background. The extension just talks to it — all config (provider, API key, save folder) lives on the server, set by `fs setup`.
 
+**One-tap ⚡ floating button (fastest):**
 1. Open any job posting on **LinkedIn**, **Indeed**, or **Greenhouse**.
-2. Click the **Flash Resume** icon → **"⚡ Tailor 1-Page Resume"**. The company, role, and job description are auto-filled (including from text you've selected on the page). The verified PDF is saved directly to your configured folder and the saved path is shown — no download dialog.
+2. Tap the ⚡ floating button in the bottom-right corner. It auto-detects the job and tailors your resume in a single tap — a toast shows the ATS score and saved path. The extension must be granted access to `localhost:13450` once in `chrome://extensions` for the page-side button to reach the local engine.
 
-The extension's built-in **Setup** wizard (first-run) lets you switch providers, update keys, or change the save folder at any time.
+**Detailed view (review / retry):**
+- Click the **Flash Resume** icon → **"⚡ Tailor 1-Page Resume"**. The company, role, and job description are auto-filled (including from text you've selected on the page). The verified PDF is saved directly to your configured folder and the saved path is shown — no download dialog.
+
+The engine reports a **"Ready" / offline** status in the popup; there is no browser-side setup wizard.
 
 ---
 
@@ -142,8 +147,7 @@ flash-resume/
 ├── extension/                   # Manifest V3 Chrome Extension
 │   ├── manifest.json
 │   ├── popup.html / popup.js    # Tailor UI + saved-path view (no download prompt)
-│   ├── onboarding.html / onboarding.js  # 6-step autosaving setup wizard
-│   └── content.js
+│   └── content.js               # Job extractor + one-tap ⚡ floating action button
 ├── src/flash_resume/
 │   ├── cli.py                   # Typer CLI (setup, init, tailor, serve, autostart, ...)
 │   ├── config.py                # ~/.config/flash-resume/config.json

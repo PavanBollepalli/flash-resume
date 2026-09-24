@@ -359,16 +359,17 @@
   </header>
 
   <div id="offlineNotice" class="notification warn" style="display: none;">
-    ⚠️ Companion engine offline. Run <code>fs serve</code> in your terminal, or open setup from the ⚙️ link below.
+    ⚠️ Companion engine offline — it starts silently at login. If it just logged in, wait a moment; otherwise run <code>fs setup</code> once to re-register it.
   </div>
 
-  <!-- First-run setup card -->
-  <div id="setupCard" class="card setup-card">
-    <div class="card-title">Welcome! Finish setup first</div>
+  <!-- Server-side setup card: only shown when the engine has no API key.
+       The server owns provider/key/save-folder (set by `fs setup`), so the
+       browser no longer runs its own setup wizard. -->
+  <div id="setupCard" class="card setup-card" style="display: none;">
+    <div class="card-title">Finish server setup</div>
     <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
-      Open the guided setup to start the engine and add your Gemini API key.
+      Open a terminal and run <code>fs setup</code> once to add your API key and choose a save folder. Everything is configured on the server, not in the browser.
     </p>
-    <button id="openOnboardingBtn" class="btn btn-primary">🚀 Open Setup Guide</button>
   </div>
 
   <main>
@@ -376,11 +377,10 @@
     <div id="guideView" class="guide card">
       <div class="card-title">How to use</div>
       <ol>
-        <li><b>Start the engine:</b> run <code>uv run fs serve</code> in your project folder.</li>
-        <li><b>Open a job posting</b> on LinkedIn, Indeed, or Greenhouse.</li>
-        <li><b>Click ⚡ Flash Resume</b> — company, role, and JD are auto-detected.</li>
-        <li><b>Click "Tailor 1-Page Resume"</b> and wait a few seconds.</li>
-        <li><b>Download the PDF</b> — layout-verified 1-page, ready to submit.</li>
+        <li>The ⚡ floating button appears on job pages (LinkedIn, Indeed, Greenhouse).</li>
+        <li><b>Tap it once</b> — it auto-detects the job and tailors your resume.</li>
+        <li>Or click <b>⚡ Flash Resume</b> and hit "Tailor" from here for the detailed view.</li>
+        <li>The 1-page PDF is saved to your configured folder automatically.</li>
       </ol>
     </div>
 
@@ -430,7 +430,6 @@
   </main>
 
   <div class="footer-links">
-    <button id="openSetupLink">⚙️ Setup / API key</button>
     <button id="reopenGuide">❓ How to use</button>
   </div>
 

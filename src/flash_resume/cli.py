@@ -500,16 +500,25 @@ def setup_cmd() -> None:
     save_config(cfg)
     console.print(f"[green]✓ Provider and key saved to {get_config_file()}[/green]")
 
-    # 3. Master resume (reuse init wizard if not yet configured)
-    console.print("\n[bold]Step 3: Master Resume[/bold]")
+    # 3. Save folder for tailored PDFs (mirror init_cmd's output-dir prompt)
+    console.print("\n[bold]Step 3: Save Folder[/bold]")
+    default_out = cfg.output_dir or str(Path.home() / "Resumes")
+    out_dir_str = Prompt.ask("Where should tailored PDFs be saved?", default=default_out)
+    Path(out_dir_str).mkdir(parents=True, exist_ok=True)
+    cfg.output_dir = out_dir_str
+    save_config(cfg)
+    console.print(f"[green]✓ Tailored PDFs will be saved to {cfg.output_dir}[/green]")
+
+    # 4. Master resume (reuse init wizard if not yet configured)
+    console.print("\n[bold]Step 4: Master Resume[/bold]")
     if cfg.master_resume_path and Path(cfg.master_resume_path).exists():
         console.print(f"[green]✓ Master resume already configured: {cfg.master_resume_path}[/green]")
     else:
         console.print("[yellow]No master resume configured yet — running the init wizard.[/yellow]")
         init_cmd()
 
-    # 4. Autostart
-    console.print("\n[bold]Step 4: Background Engine Autostart[/bold]")
+    # 5. Autostart
+    console.print("\n[bold]Step 5: Background Engine Autostart[/bold]")
     try:
         cmd_str = autostart.install()
         console.print(f"[green]✓ Server will start automatically at login.[/green]")
@@ -518,8 +527,8 @@ def setup_cmd() -> None:
         console.print(f"[yellow]Could not register autostart: {e}[/yellow]")
         console.print("[dim]You can start the server manually with 'fs serve'.[/dim]")
 
-    # 5. Extension install
-    console.print("\n[bold]Step 5: Browser Extension[/bold]")
+    # 6. Extension install
+    console.print("\n[bold]Step 6: Browser Extension[/bold]")
     ext_path = extension.install_to()
     console.print(f"[green]✓ Extension copied to a stable location.[/green]")
     console.print(
