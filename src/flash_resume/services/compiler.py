@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import shutil
 import time
 from pathlib import Path
@@ -13,6 +14,8 @@ import pypdf
 import typst
 
 from flash_resume.models.resume import MasterResume
+
+logger = logging.getLogger("flash_resume.tailor")
 
 
 class CompilerService:
@@ -78,6 +81,7 @@ class CompilerService:
             # Programmatically verify page count with pypdf
             reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
             page_count = len(reader.pages)
+            logger.info("compile pass=standard | %.0fms | pages=%d", dt, page_count)
 
             # Pass 2: If overflowed (> max_pages), trigger compact mode (~30ms)
             if page_count > max_pages:
@@ -87,11 +91,13 @@ class CompilerService:
                     root=root_dir,
                     sys_inputs={"data_path": rel_data_path, "density": "compact"},
                 )
-                dt += (time.time() - t1) * 1000
+                cdt = (time.time() - t1) * 1000
                 reader2 = pypdf.PdfReader(io.BytesIO(compact_bytes))
                 if len(reader2.pages) < page_count:
                     pdf_bytes = compact_bytes
                     page_count = len(reader2.pages)
+                dt += cdt
+                logger.info("compile pass=compact | %.0fms | pages=%d", cdt, page_count)
 
             # Pass 3: If still overflowed (> max_pages), trigger tight mode (~30ms)
             if page_count > max_pages:
@@ -101,11 +107,13 @@ class CompilerService:
                     root=root_dir,
                     sys_inputs={"data_path": rel_data_path, "density": "tight"},
                 )
-                dt += (time.time() - t2) * 1000
+                tdt = (time.time() - t2) * 1000
                 reader3 = pypdf.PdfReader(io.BytesIO(tight_bytes))
                 if len(reader3.pages) < page_count:
                     pdf_bytes = tight_bytes
                     page_count = len(reader3.pages)
+                dt += tdt
+                logger.info("compile pass=tight | %.0fms | pages=%d", tdt, page_count)
 
             # Write finalized PDF
             output_pdf_path.write_bytes(pdf_bytes)

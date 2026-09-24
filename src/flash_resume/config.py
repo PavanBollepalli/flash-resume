@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -26,8 +26,24 @@ class AppConfig(BaseModel):
     )
     default_model: str = Field(
         default="gemini-3.5-flash-lite",
-        description="Gemini model ID to use for AI ATS tailoring",
+        description="Model ID to use for AI ATS tailoring",
     )
+    llm_provider: str = Field(
+        default="gemini",
+        description="LLM provider: 'gemini' or 'groq'",
+    )
+    groq_api_key: Optional[str] = Field(
+        default=None,
+        description="Groq API key (or set GROQ_API_KEY env var)",
+    )
+    groq_model: str = Field(
+        default="openai/gpt-oss-20b",
+        description="Groq model ID for fast tailoring",
+    )
+
+    def resolve_groq_api_key(self) -> Optional[str]:
+        """Resolve Groq API key from environment variable or stored config."""
+        return os.environ.get("GROQ_API_KEY") or self.groq_api_key
     max_pages: int = Field(
         default=1,
         description="Target maximum page count for the generated resume",

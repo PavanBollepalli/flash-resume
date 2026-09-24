@@ -357,9 +357,11 @@ def tailor_cmd(
         return
 
     engine = TailorEngine(cfg)
+    model_name = cfg.groq_model if cfg.llm_provider == "groq" else cfg.default_model
+    console.print(f"[dim]Engine: [cyan]{cfg.llm_provider}[/cyan] · Model: [cyan]{model_name}[/cyan][/dim]")
 
     try:
-        with console.status("[bold cyan]Analyzing JD & tailoring resume with Gemini Flash...[/bold cyan]", spinner="dots"):
+        with console.status(f"[bold cyan]Analyzing JD & tailoring resume with {model_name}...[/bold cyan]", spinner="dots"):
             result = engine.tailor(
                 job_description=jd_text,
                 company_override=company,

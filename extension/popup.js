@@ -4,6 +4,7 @@ const API_BASE = "http://127.0.0.1:8000";
 
 let currentPdfBase64 = null;
 let currentFilename = "Tailored_Resume.pdf";
+let outputDir = "";
 
 function openOnboarding() {
   chrome.tabs.create({ url: chrome.runtime.getURL("onboarding.html") });
@@ -47,9 +48,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       const data = await res.json();
       engineOnline = true;
       statusBadge.classList.remove("offline");
-      statusText.textContent = data.candidate_name ? `${data.candidate_name} (Ready)` : "Engine Ready";
+      const providerTag = data.provider === "groq" ? "⚡" : "🎯";
+      statusText.textContent = data.candidate_name
+        ? `${data.candidate_name} ${providerTag} (Ready)`
+        : `Engine Ready ${providerTag}`;
       offlineNotice.style.display = "none";
-      if (!data.has_api_key) {
+      outputDir = data.output_dir || "";
+      const hasActiveKey = data.provider === "groq" ? data.has_groq_key : data.has_api_key;
+      if (!hasActiveKey) {
         setupCard.style.display = "block";
       }
     } else {
@@ -160,6 +166,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         span.textContent = kw;
         chipContainer.appendChild(span);
       });
+
+      if (outputDir) {
+        document.getElementById("resSavePath").textContent = `📁 Already saved in: ${outputDir}`;
+      }
     } catch (error) {
       alert("Error: " + error.message);
     } finally {
@@ -169,19 +179,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // 4. Download PDF Action
-  document.getElementById("downloadBtn").addEventListener("click", () => {
-    if (!currentPdfBase64) return;
-    const blob = b64toBlob(currentPdfBase64, "application/pdf");
-    const url = URL.createObjectURL(blob);
-    chrome.downloads.download({
-      url: url,
-      filename: currentFilename,
-      saveAs: true,
-    });
-  });
-
-  // 5. Reset Action
+  // 4. Reset Action
   document.getElementById("resetBtn").addEventListener("click", () => {
     document.getElementById("resultView").style.display = "none";
     document.getElementById("tailorForm").style.display = "block";

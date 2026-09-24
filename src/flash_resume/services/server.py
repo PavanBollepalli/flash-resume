@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +14,13 @@ from pydantic import BaseModel, Field
 from flash_resume.config import load_config, save_config
 from flash_resume.models.resume import MasterResume
 from flash_resume.services.tailor import TailorEngine
+
+# Surface pipeline logs (model + timings) in the `fs serve` terminal.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 app = FastAPI(
     title="Flash Resume Local Companion",
@@ -38,6 +46,18 @@ class TailorRequest(BaseModel):
 
 class ApiKeyRequest(BaseModel):
     api_key: str = Field(min_length=1, description="Gemini API key to persist in local config")
+
+
+class GroqKeyRequest(BaseModel):
+    api_key: str = Field(min_length=1, description="Groq API key to persist in local config")
+
+
+class ProviderRequest(BaseModel):
+    provider: str = Field(min_length=1, description="Provider to use: 'gemini' or 'groq'")
+
+
+class OutputDirRequest(BaseModel):
+    output_dir: str = Field(min_length=1, description="Folder where tailored resumes are saved")
 
 
 class TailorResponse(BaseModel):
@@ -75,6 +95,8 @@ def get_status():
         "candidate_name": candidate_name,
         "output_dir": cfg.output_dir,
         "has_api_key": bool(cfg.resolve_api_key()),
+        "has_groq_key": bool(cfg.resolve_groq_api_key()),
+        "provider": cfg.llm_provider,
     }
 
 
@@ -85,6 +107,37 @@ def set_api_key(req: ApiKeyRequest):
     cfg.gemini_api_key = req.api_key.strip()
     save_config(cfg)
     return {"success": True, "detail": "API key saved to local Flash Resume config."}
+
+
+@app.post("/api/config/groq-key")
+def set_groq_key(req: GroqKeyRequest):
+    """Persist a Groq API key supplied by the browser extension onboarding."""
+    cfg = load_config()
+    cfg.groq_api_key = req.api_key.strip()
+    save_config(cfg)
+    return {"success": True, "detail": "Groq API key saved to local Flash Resume config."}
+
+
+@app.post("/api/config/provider")
+def set_provider(req: ProviderRequest):
+    """Switch the active LLM provider ('gemini' or 'groq')."""
+    provider = req.provider.strip().lower()
+    if provider not in ("gemini", "groq"):
+        raise HTTPException(status_code=400, detail="Provider must be 'gemini' or 'groq'.")
+    cfg = load_config()
+    cfg.llm_provider = provider
+    save_config(cfg)
+    return {"success": True, "provider": provider}
+
+
+@app.post("/api/config/output-dir")
+def set_output_dir(req: OutputDirRequest):
+    """Persist the folder where tailored resumes are saved (set during onboarding)."""
+    cfg = load_config()
+    cfg.output_dir = req.output_dir.strip()
+    Path(cfg.output_dir).mkdir(parents=True, exist_ok=True)
+    save_config(cfg)
+    return {"success": True, "output_dir": cfg.output_dir}
 
 
 @app.post("/api/tailor", response_model=TailorResponse)

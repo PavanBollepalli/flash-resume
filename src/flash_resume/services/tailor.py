@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 import re
 import time
 from pathlib import Path
@@ -14,6 +15,9 @@ from flash_resume.models.tailoring import TailorPlan, TailorResult
 from flash_resume.services.compiler import CompilerService
 from flash_resume.services.llm import LLMService
 from flash_resume.services.validator import validate_bullet_length
+
+
+logger = logging.getLogger("flash_resume.tailor")
 
 
 EVIDENCE_TERMS = (
@@ -188,10 +192,19 @@ class TailorEngine:
     def __init__(self, config: AppConfig):
         self.config = config
         self.compiler = CompilerService()
-        self.llm = LLMService(
-            api_key=config.resolve_api_key(),
-            model=config.default_model,
-        )
+        if config.llm_provider == "groq":
+            from flash_resume.services.groq_llm import GroqLLMService
+
+            self.llm = GroqLLMService(
+                api_key=config.resolve_groq_api_key(),
+                model=config.groq_model,
+            )
+        else:
+            self.llm = LLMService(
+                api_key=config.resolve_api_key(),
+                model=config.default_model,
+            )
+        self.model = config.groq_model if config.llm_provider == "groq" else config.default_model
 
     def tailor(
         self,
@@ -211,6 +224,12 @@ class TailorEngine:
             if not resume_path.exists():
                 raise FileNotFoundError(f"Master resume not found at {resume_path}")
             master_resume = MasterResume.model_validate_json(resume_path.read_text(encoding="utf-8"))
+
+        logger.info(
+            "Tailor started | provider=%s | model=%s",
+            self.config.llm_provider,
+            self.model,
+        )
 
         # 2. Call LLM for Structured Tailor Plan
         llm_started_at = time.perf_counter()
@@ -259,6 +278,17 @@ class TailorEngine:
         )
         diff_path.write_text(diff_md, encoding="utf-8")
 
+        total_time_ms = (time.perf_counter() - started_at) * 1000
+        logger.info(
+            "Tailor finished | provider=%s | model=%s | llm=%.0fms | compile=%.0fms | total=%.0fms | pages=%d",
+            self.config.llm_provider,
+            self.model,
+            llm_time_ms,
+            compile_ms,
+            total_time_ms,
+            pages,
+        )
+
         return TailorResult(
             pdf_path=str(pdf_path.resolve()),
             json_path=str(json_path.resolve()),
@@ -266,7 +296,7 @@ class TailorEngine:
             page_count=pages,
             llm_time_ms=llm_time_ms,
             compile_time_ms=compile_ms,
-            total_time_ms=(time.perf_counter() - started_at) * 1000,
+            total_time_ms=total_time_ms,
             plan=plan,
         )
 

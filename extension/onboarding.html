@@ -196,6 +196,65 @@
       transition: border-color 0.2s, box-shadow 0.2s;
     }
 
+    .provider-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .provider-option {
+      background: var(--input-bg);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 14px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.2s ease;
+      font: inherit;
+      color: var(--text-main);
+    }
+
+    .provider-option:hover {
+      border-color: rgba(249, 115, 22, 0.45);
+    }
+
+    .provider-option.selected {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      box-shadow: 0 4px 12px rgba(249, 115, 22, 0.15);
+    }
+
+    .provider-option .p-name {
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .provider-option .p-desc {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    .p-badge {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .provider-option.selected .p-badge {
+      background: var(--accent-dark);
+    }
+
     input:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18);
@@ -357,7 +416,7 @@
         <li><span class="icon">📄</span><span><strong>Guaranteed 1-page fit</strong> — layout is verified programmatically after compilation.</span></li>
         <li><span class="icon">⚡</span><span><strong>Seconds, not minutes</strong> — local Typst compilation in under 100ms.</span></li>
       </ul>
-      <p class="lede" style="margin-bottom:0">Setup takes about a minute. You'll need a terminal window open and a free Gemini API key.</p>
+      <p class="lede" style="margin-bottom:0">Setup takes about a minute. You'll need a terminal window open and a free API key — Gemini for best quality, or Groq for maximum speed.</p>
       <div class="btn-row">
         <span></span>
         <button class="btn btn-primary" id="btnStart">Get Started →</button>
@@ -380,33 +439,66 @@
       </div>
     </section>
 
-    <!-- Step 3: API key -->
+    <!-- Step 3: Provider choice -->
     <section class="panel" id="step3">
-      <h2>Add your Gemini API key</h2>
-      <p class="lede">Flash Resume uses Gemini Flash for ATS optimization. Grab a free key from Google AI Studio, paste it below, and it will be saved to your local Flash Resume config.</p>
-      <label for="apiKeyInput">Gemini API Key</label>
-      <input type="password" id="apiKeyInput" placeholder="AIza…" autocomplete="off">
-      <p class="hint">Get a key at <a href="https://aistudio.google.com/" target="_blank" rel="noopener">aistudio.google.com</a> → Get API key. If you already set <code>GEMINI_API_KEY</code> in your environment, you can skip this step.</p>
-      <div>
-        <button class="btn btn-primary" id="saveKeyBtn" style="margin-top:14px">💾 Save Key</button>
-        <span id="keyPill" class="status-pill wait" style="display:none"></span>
+      <h2>Pick your AI engine</h2>
+      <p class="lede">Choose the provider that powers ATS tailoring. You can switch anytime from this setup page.</p>
+      <div class="provider-grid">
+        <button class="provider-option selected" id="providerGemini" type="button">
+          <div class="p-name">Gemini <span class="p-badge">Quality</span></div>
+          <div class="p-desc">Gemini 3.5 Flash Lite. Best keyword intelligence, deep thinking — takes ~15-20s per tailor.</div>
+        </button>
+        <button class="provider-option" id="providerGroq" type="button">
+          <div class="p-name">Groq <span class="p-badge">Speed</span></div>
+          <div class="p-desc">OpenAI gpt-oss-20b on Groq LPUs. Near-instant results in ~1-3 seconds. Free tier available.</div>
+        </button>
       </div>
+      <p class="hint">Both are free-tier friendly. Groq keys: <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> · Gemini keys: <a href="https://aistudio.google.com/" target="_blank" rel="noopener">aistudio.google.com</a></p>
       <div class="btn-row">
         <button class="btn btn-ghost" id="btnBack3">← Back</button>
         <button class="btn btn-primary" id="btnNext3">Continue →</button>
       </div>
     </section>
 
-    <!-- Step 4: Checklist -->
+    <!-- Step 4: API key -->
     <section class="panel" id="step4">
+      <h2 id="keyStepTitle">Add your API key</h2>
+      <p class="lede" id="keyStepLede">Paste your key below — it's saved to your local Flash Resume config only.</p>
+      <label for="apiKeyInput" id="keyStepLabel">API Key</label>
+      <input type="password" id="apiKeyInput" placeholder="" autocomplete="off">
+      <p class="hint" id="keyStepHint"></p>
+      <span id="keyPill" class="status-pill wait" style="display:none;margin-top:14px"></span>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btnBack4key">← Back</button>
+        <button class="btn btn-primary" id="btnNext4key">Continue →</button>
+      </div>
+    </section>
+
+    <!-- Step 5: Save location -->
+    <section class="panel" id="step5">
+      <h2>Choose where resumes are saved</h2>
+      <p class="lede">Every tailored resume is saved straight to this folder — no location prompt at download time. You can change it later from this same setup page.</p>
+      <label for="outputDirInput">Save Folder</label>
+      <input type="text" id="outputDirInput" placeholder="C:\Users\you\Desktop\resumes">
+      <p class="hint">Absolute path on this machine (pre-filled with your current setting). The folder is created automatically if it doesn't exist.</p>
+      <span id="dirPill" class="status-pill wait" style="display:none;margin-top:14px"></span>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btnBack5">← Back</button>
+        <button class="btn btn-primary" id="btnNext5">Continue →</button>
+      </div>
+    </section>
+
+    <!-- Step 6: Checklist -->
+    <section class="panel" id="step6">
       <h2>You're all set ✅</h2>
       <p class="lede">Here's your setup status. Refresh it any time with the button below.</p>
       <ul class="checklist">
         <li id="chkServer"><span class="check-mark">✓</span>Companion engine running (<code>fs serve</code>)</li>
-        <li id="chkKey"><span class="check-mark">✓</span>Gemini API key configured</li>
+        <li id="chkKey"><span class="check-mark">✓</span><span id="chkKeyLabel">API key configured</span></li>
         <li id="chkResume"><span class="check-mark">✓</span>Master resume set up (<code>fs init</code>)</li>
+        <li id="chkDir"><span class="check-mark">✓</span>Save location configured</li>
       </ul>
-      <p class="hint">How to use: open any job posting on LinkedIn, Indeed, or Greenhouse → click the ⚡ Flash Resume icon → <strong>Tailor 1-Page Resume</strong> → <strong>Download PDF</strong>.</p>
+      <p class="hint">How to use: open any job posting on LinkedIn, Indeed, or Greenhouse → click the ⚡ Flash Resume icon → <strong>Tailor 1-Page Resume</strong> → the PDF lands in your chosen folder automatically.</p>
       <div class="btn-row">
         <button class="btn btn-ghost" id="btnRefresh">↻ Refresh status</button>
         <button class="btn btn-primary" id="btnFinish">Done — start tailoring ⚡</button>
