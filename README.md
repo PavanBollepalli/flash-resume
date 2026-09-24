@@ -8,7 +8,8 @@ Stop the manual **3-tab shuffle** (Job Board ↔ ChatGPT ↔ Overleaf). Full doc
 1. **Targeted ATS Diffing**: Injects high-density keywords from the job description directly into existing skills and bullets with a **strict word-count budget ($\pm 2$ words)**.
 2. **Instant Typst Compilation**: Compiles your resume locally in **< 100 milliseconds** via bundled Typst.
 3. **Programmatic Overflow Protection**: Uses `pypdf` to inspect the compiled document and guarantee a **verified single-page fit**.
-4. **1-Click Browser Extension**: Tailor and download a ready-to-submit PDF directly from LinkedIn, Indeed, or Greenhouse in seconds.
+4. **Choice of AI engine**: Pick **Gemini** for best ATS keyword quality (~15-20s) or **Groq** for near-instant tailoring (**~3s**) — switch any time from the extension setup.
+5. **1-Click Browser Extension**: Tailor from LinkedIn, Indeed, or Greenhouse — the verified PDF is saved straight to your chosen folder, no download prompt.
 
 ---
 
@@ -37,13 +38,19 @@ uv run fs init
 
 *Don't have a JSON resume yet? The wizard can automatically create a starter master resume at `~/.config/flash-resume/master_resume.json` for you.*
 
-### 3. Set Your Gemini API Key
+### 3. Set Your AI Provider API Key
 
-Get a free API key from [Google AI Studio](https://aistudio.google.com/):
+Pick one — **Gemini** (best quality) or **Groq** (fastest):
 
 ```powershell
-$env:GEMINI_API_KEY="your-api-key"
+# Gemini (quality, ~15-20s)
+$env:GEMINI_API_KEY="your-gemini-key"   # from https://aistudio.google.com/
+
+# OR Groq (speed, ~3s)
+$env:GROQ_API_KEY="your-groq-key"       # from https://console.groq.com/keys
 ```
+
+You can also enter either key (and choose the provider) right inside the extension's setup flow.
 
 ### 4. Verify System Health
 
@@ -119,8 +126,9 @@ Prefer not to leave your browser? Use the included Chrome Extension companion:
    - Navigate to `chrome://extensions/`
    - Enable **Developer mode** (top-right toggle).
    - Click **Load unpacked** and select the `extension/` folder in this repo.
-3. Open any job posting on **LinkedIn**, **Indeed**, or **Greenhouse**.
-4. Click the **Flash Resume** extension icon $\rightarrow$ Click **"⚡ Tailor 1-Page Resume"** $\rightarrow$ Click **"📥 Download 1-Page PDF"**.
+3. Run the included **first-run setup** (click the extension icon → **Setup**): it walks you through checking the engine, picking your AI provider (Gemini or Groq), entering your API key, and choosing a **save folder** — everything **autosaves** as you click **Continue**.
+4. Open any job posting on **LinkedIn**, **Indeed**, or **Greenhouse**.
+5. Click the **Flash Resume** icon → **"⚡ Tailor 1-Page Resume"**. The company, role, and job description are auto-filled (including from text you've selected on the page). The verified PDF is saved directly to your configured folder and the saved path is shown — no download dialog.
 
 ---
 
@@ -134,8 +142,8 @@ flash-resume/
 │   └── resume.typ               # Modern, ATS-optimized Typst template
 ├── extension/                   # Manifest V3 Chrome Extension
 │   ├── manifest.json
-│   ├── popup.html
-│   ├── popup.js
+│   ├── popup.html / popup.js    # Tailor UI + saved-path view (no download prompt)
+│   ├── onboarding.html / onboarding.js  # 6-step autosaving setup wizard
 │   └── content.js
 ├── src/flash_resume/
 │   ├── cli.py                   # Typer CLI (init, tailor, doctor, serve)
@@ -147,6 +155,7 @@ flash-resume/
 │   ├── services/
 │   │   ├── compiler.py          # Typst compilation & pypdf page validation
 │   │   ├── llm.py               # Gemini Flash structured ATS optimization
+│   │   ├── groq_llm.py          # Groq (gpt-oss-20b) fast provider
 │   │   ├── tailor.py            # Pipeline orchestrator & diff generator
 │   │   └── server.py            # FastAPI companion daemon for Chrome Extension
 │   └── utils/
