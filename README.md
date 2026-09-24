@@ -13,48 +13,54 @@ Stop the manual **3-tab shuffle** (Job Board ↔ ChatGPT ↔ Overleaf). Full doc
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (Windows)
 
-### 1. Installation
-
-Clone the repository and install dependencies with [`uv`](https://docs.astral.sh/uv/):
+### 1. Install
 
 ```powershell
-# Clone repo
+pip install flash-resume
+```
+
+That's it for dependencies — the package bundles everything (Typst engine, AI clients, the extension files).
+
+### 2. One-Time Setup
+
+```powershell
+fs setup
+```
+
+This interactive command:
+1. Asks you to pick an AI provider (**Gemini** quality or **Groq** speed) and enter your free API key
+2. Sets up your master resume (runs the init wizard if needed)
+3. Registers the engine to **start silently at Windows logon** — no terminal ever needed again
+4. Copies the Chrome extension to a stable folder and tells you where to Load-unpack it
+
+### 3. Load the Extension (Once)
+
+1. Open `chrome://extensions/` (works in Chrome, Brave, and Edge)
+2. Enable **Developer mode** (top-right toggle)
+3. Click **Load unpacked** and select the folder printed by `fs setup`
+   (default: `%LOCALAPPDATA%\flash-resume\extension`)
+
+**That's it.** The engine autostarts at login, and the extension reconnects automatically — no reloads, no terminal, no "keep this window open" needed.
+
+### Managing the Setup
+
+```powershell
+fs autostart status    # check if the at-login autostart is registered
+fs autostart disable   # stop the engine from starting at login
+fs autostart enable    # re-enable it
+fs extension-path      # print the extension folder for Load-unpacked
+fs doctor              # verify system health
+```
+
+### For Contributors (from source)
+
+```powershell
 git clone https://github.com/PavanBollepalli/flash-resume.git
 cd flash-resume
-
-# Install dependencies
 uv sync
-```
-
-### 2. Initial Setup (Run Once)
-
-Run the interactive setup wizard to configure your master resume and preferred output folder:
-
-```powershell
 uv run fs init
-```
-
-*Don't have a JSON resume yet? The wizard can automatically create a starter master resume at `~/.config/flash-resume/master_resume.json` for you.*
-
-### 3. Set Your AI Provider API Key
-
-Pick one — **Gemini** (best quality) or **Groq** (fastest):
-
-```powershell
-# Gemini (quality, ~15-20s)
-$env:GEMINI_API_KEY="your-gemini-key"   # from https://aistudio.google.com/
-
-# OR Groq (speed, ~3s)
-$env:GROQ_API_KEY="your-groq-key"       # from https://console.groq.com/keys
-```
-
-You can also enter either key (and choose the provider) right inside the extension's setup flow.
-
-### 4. Verify System Health
-
-```powershell
 uv run fs doctor
 ```
 
@@ -116,19 +122,12 @@ uv run fs tailor --out ./applications/2026/
 
 ## 🧩 Chrome Extension (1-Click Tailor)
 
-Prefer not to leave your browser? Use the included Chrome Extension companion:
+After `fs setup`, the companion engine runs silently in the background. The extension just talks to it:
 
-1. In your terminal, start the local companion server:
-   ```powershell
-   uv run fs serve
-   ```
-2. In Google Chrome:
-   - Navigate to `chrome://extensions/`
-   - Enable **Developer mode** (top-right toggle).
-   - Click **Load unpacked** and select the `extension/` folder in this repo.
-3. Run the included **first-run setup** (click the extension icon → **Setup**): it walks you through checking the engine, picking your AI provider (Gemini or Groq), entering your API key, and choosing a **save folder** — everything **autosaves** as you click **Continue**.
-4. Open any job posting on **LinkedIn**, **Indeed**, or **Greenhouse**.
-5. Click the **Flash Resume** icon → **"⚡ Tailor 1-Page Resume"**. The company, role, and job description are auto-filled (including from text you've selected on the page). The verified PDF is saved directly to your configured folder and the saved path is shown — no download dialog.
+1. Open any job posting on **LinkedIn**, **Indeed**, or **Greenhouse**.
+2. Click the **Flash Resume** icon → **"⚡ Tailor 1-Page Resume"**. The company, role, and job description are auto-filled (including from text you've selected on the page). The verified PDF is saved directly to your configured folder and the saved path is shown — no download dialog.
+
+The extension's built-in **Setup** wizard (first-run) lets you switch providers, update keys, or change the save folder at any time.
 
 ---
 
@@ -146,8 +145,11 @@ flash-resume/
 │   ├── onboarding.html / onboarding.js  # 6-step autosaving setup wizard
 │   └── content.js
 ├── src/flash_resume/
-│   ├── cli.py                   # Typer CLI (init, tailor, doctor, serve)
+│   ├── cli.py                   # Typer CLI (setup, init, tailor, serve, autostart, ...)
 │   ├── config.py                # ~/.config/flash-resume/config.json
+│   ├── bootstrap.py             # Silent server entrypoint (pythonw -m flash_resume.bootstrap)
+│   ├── autostart.py             # Windows Run-key registration for at-login server start
+│   ├── extension.py             # Bundled Chrome extension installer (Load-unpacked path)
 │   ├── models/
 │   │   ├── resume.py            # MasterResume & structured components
 │   │   ├── job.py               # JobAnalysis & extracted specs

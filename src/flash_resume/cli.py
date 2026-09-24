@@ -14,6 +14,7 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from flash_resume import __version__
+from flash_resume import autostart, extension
 from flash_resume.config import (
     AppConfig,
     get_config_dir,
@@ -447,6 +448,149 @@ def serve_cmd(
         )
     )
     uvicorn.run("flash_resume.services.server:app", host=host, port=port, reload=False)
+
+
+@app.command(name="setup")
+def setup_cmd() -> None:
+    """One-time setup: provider + key, autostart, and extension install."""
+    console.print(
+        Panel(
+            "[bold cyan]⚡ Flash Resume One-Time Setup[/bold cyan]\n"
+            "[dim]Configure the AI engine, start the background server at login, "
+            "and install the browser extension.[/dim]",
+            border_style="cyan",
+        )
+    )
+
+    cfg = load_config()
+
+    # 1. Provider choice
+    console.print("\n[bold]Step 1: AI Provider[/bold]")
+    console.print("  [bold cyan]1[/bold cyan] - Gemini (best quality, ~15-20s per tailor)")
+    console.print("  [bold cyan]2[/bold cyan] - Groq   (fastest, ~1-3s per tailor)")
+    provider_choice = Prompt.ask("Select a provider", choices=["1", "2"], default="2" if cfg.llm_provider == "groq" else "1")
+    cfg.llm_provider = "groq" if provider_choice == "2" else "gemini"
+
+    # 2. API key for the chosen provider
+    if cfg.llm_provider == "groq":
+        console.print("\n[bold]Step 2: Groq API Key[/bold]")
+        current = cfg.resolve_groq_api_key()
+        if current:
+            masked = current[:8] + "..." if len(current) > 8 else "***"
+            console.print(f"Existing key detected: [green]{masked}[/green]")
+            key_input = Prompt.ask("Enter new key (or press Enter to keep)", default="")
+        else:
+            console.print("[dim]Get a free key at https://console.groq.com/keys[/dim]")
+            key_input = Prompt.ask("Enter your Groq API key (gsk_...)", default="")
+        if key_input:
+            cfg.groq_api_key = key_input.strip()
+    else:
+        console.print("\n[bold]Step 2: Gemini API Key[/bold]")
+        current = cfg.resolve_api_key()
+        if current:
+            masked = current[:4] + "..." + current[-4:] if len(current) > 8 else "***"
+            console.print(f"Existing key detected: [green]{masked}[/green]")
+            key_input = Prompt.ask("Enter new key (or press Enter to keep)", default="")
+        else:
+            console.print("[dim]Get a free key at https://aistudio.google.com[/dim]")
+            key_input = Prompt.ask("Enter your Gemini API key", default="")
+        if key_input:
+            cfg.gemini_api_key = key_input.strip()
+
+    save_config(cfg)
+    console.print(f"[green]✓ Provider and key saved to {get_config_file()}[/green]")
+
+    # 3. Master resume (reuse init wizard if not yet configured)
+    console.print("\n[bold]Step 3: Master Resume[/bold]")
+    if cfg.master_resume_path and Path(cfg.master_resume_path).exists():
+        console.print(f"[green]✓ Master resume already configured: {cfg.master_resume_path}[/green]")
+    else:
+        console.print("[yellow]No master resume configured yet — running the init wizard.[/yellow]")
+        init_cmd()
+
+    # 4. Autostart
+    console.print("\n[bold]Step 4: Background Engine Autostart[/bold]")
+    try:
+        cmd_str = autostart.install()
+        console.print(f"[green]✓ Server will start automatically at login.[/green]")
+        console.print(f"  [dim]Registered: {cmd_str}[/dim]")
+    except Exception as e:
+        console.print(f"[yellow]Could not register autostart: {e}[/yellow]")
+        console.print("[dim]You can start the server manually with 'fs serve'.[/dim]")
+
+    # 5. Extension install
+    console.print("\n[bold]Step 5: Browser Extension[/bold]")
+    ext_path = extension.install_to()
+    console.print(f"[green]✓ Extension copied to a stable location.[/green]")
+    console.print(
+        Panel(
+            f"[bold]Load the extension in Chrome / Brave / Edge:[/bold]\n\n"
+            f"1. Open [cyan]chrome://extensions/[/cyan]\n"
+            f"2. Enable [bold]Developer mode[/bold] (top-right toggle)\n"
+            f"3. Click [bold]Load unpacked[/bold] and select:\n"
+            f"   [bold cyan]{ext_path}[/bold cyan]\n\n"
+            f"[dim]You only need to do this once — the extension reconnects "
+            f"to the background engine automatically.[/dim]",
+            title="[bold]Extension Ready[/bold]",
+            border_style="cyan",
+        )
+    )
+
+    console.print(
+        Panel(
+            "[bold green]🎉 Setup complete![/bold green]\n\n"
+            "The Flash Resume engine starts silently every time you log in.\n"
+            "Just open any job posting on LinkedIn, Indeed, or Greenhouse and\n"
+            "click the ⚡ Flash Resume icon → [bold]Tailor 1-Page Resume[/bold].\n\n"
+            f"[dim]CLI users: 'fs tailor' still works from any terminal.[/dim]",
+            border_style="green",
+        )
+    )
+
+
+autostart_app = typer.Typer(help="Manage the at-login autostart of the background engine.")
+app.add_typer(autostart_app, name="autostart")
+
+
+@autostart_app.command(name="enable")
+def autostart_enable_cmd() -> None:
+    """Register the server to start silently at Windows logon."""
+    try:
+        autostart.install()
+        registered, detail = autostart.status()
+        console.print(f"[green]✓ Autostart registered.[/green]")
+        console.print(f"  [dim]{detail}[/dim]")
+    except Exception as e:
+        console.print(f"[bold red]Failed to register autostart:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+
+@autostart_app.command(name="disable")
+def autostart_disable_cmd() -> None:
+    """Remove the at-login autostart registration."""
+    try:
+        autostart.uninstall()
+        console.print("[green]✓ Autostart removed. The server will no longer start at login.[/green]")
+    except Exception as e:
+        console.print(f"[bold red]Failed to remove autostart:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+
+@autostart_app.command(name="status")
+def autostart_status_cmd() -> None:
+    """Show whether the at-login autostart is registered."""
+    registered, detail = autostart.status()
+    if registered:
+        console.print(f"[green]✓ Registered[/green]\n  [dim]{detail}[/dim]")
+    else:
+        console.print(f"[yellow]✗ Not registered[/yellow]\n  [dim]{detail}[/dim]")
+
+
+@app.command(name="extension-path")
+def extension_path_cmd() -> None:
+    """Print (and install if needed) the extension folder for Load-unpacked."""
+    ext_path = extension.display_path()
+    console.print(f"Load the extension from: [bold cyan]{ext_path}[/bold cyan]")
 
 
 if __name__ == "__main__":
