@@ -1,0 +1,33 @@
+name: Publish to PyPI
+
+# Publishes to PyPI via a trusted publisher (no stored API token).
+# Triggered when a matching version tag is pushed, e.g. `git tag v0.2.0`.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    permissions:
+      # Required for trusted publishing against PyPI (OIDC).
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build backend
+        run: python -m pip install --upgrade build
+
+      - name: Build sdist + wheel
+        run: python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
