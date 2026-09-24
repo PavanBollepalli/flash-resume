@@ -20,7 +20,7 @@ def main() -> None:
     uvicorn.run(
         "flash_resume.services.server:app",
         host="127.0.0.1",
-        port=8000,
+        port=13450,
         reload=False,
     )
 

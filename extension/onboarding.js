@@ -1,6 +1,6 @@
 // Flash Resume Extension - Onboarding Controller
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "http://127.0.0.1:13450";
 const TOTAL_STEPS = 6;
 
 let currentStep = 1;

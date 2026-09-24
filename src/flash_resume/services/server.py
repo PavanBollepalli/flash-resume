@@ -25,7 +25,7 @@ logging.basicConfig(
 app = FastAPI(
     title="Flash Resume Local Companion",
     description="Local background API powering 1-click browser extension tailoring.",
-    version="0.2.0",
+    version="0.2.2",
 )
 
 # Enable CORS for browser extensions and local web callers

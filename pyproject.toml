@@ -1,6 +1,6 @@
 [project]
 name = "flash-resume"
-version = "0.2.0"
+version = "0.2.2"
 description = "Fast, ATS-focused resume tailoring and PDF generation."
 readme = "README.md"
 requires-python = ">=3.12"

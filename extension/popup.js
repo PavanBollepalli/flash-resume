@@ -1,6 +1,6 @@
 // Flash Resume Extension Popup Controller
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "http://127.0.0.1:13450";
 
 let currentPdfBase64 = null;
 let currentFilename = "Tailored_Resume.pdf";

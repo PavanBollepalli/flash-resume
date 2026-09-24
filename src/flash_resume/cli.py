@@ -434,7 +434,7 @@ def doctor_cmd() -> None:
 @app.command(name="serve")
 def serve_cmd(
     host: str = "127.0.0.1",
-    port: int = 8000,
+    port: int = 13450,
 ) -> None:
     """Start the local companion server for the 1-click Chrome Extension."""
     import uvicorn
