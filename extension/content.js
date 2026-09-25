@@ -11,9 +11,15 @@ function extractJobDetails() {
 
   // 1. LinkedIn Job Page
   if (url.includes("linkedin.com")) {
-    title = document.querySelector(".job-details-jobs-unified-top-card__job-title, .topcard__title, h1")?.innerText?.trim() || "";
-    company = document.querySelector(".job-details-jobs-unified-top-card__company-name, .topcard__org-name-link, .jobs-unified-top-card__company-name")?.innerText?.trim() || "";
-    jd = document.querySelector("#job-details, .jobs-description__content, .description__text")?.innerText?.trim() || "";
+    title = document.querySelector(
+      ".job-details-jobs-unified-top-card__job-title, .topcard__title, h1, [class*='job-title']"
+    )?.innerText?.trim() || "";
+    company = document.querySelector(
+      ".job-details-jobs-unified-top-card__company-name, .topcard__org-name-link, .jobs-unified-top-card__company-name, [class*='company-name']"
+    )?.innerText?.trim() || "";
+    jd = document.querySelector(
+      "#job-details, .jobs-description__content, .jobs-box__html-content, .description__text, .jobs-description__container, [class*='job-description']"
+    )?.innerText?.trim() || "";
   }
   // 2. Indeed Job Page
   else if (url.includes("indeed.com")) {
@@ -25,7 +31,7 @@ function extractJobDetails() {
   else if (url.includes("greenhouse.io") || url.includes("lever.co")) {
     title = document.querySelector(".app-title, .posting-headline h2, h1")?.innerText?.trim() || "";
     company = document.querySelector(".company-name, .main-header-logo, .posting-headline")?.innerText?.trim() || "";
-    jd = document.querySelector("#content, .section-wrapper, .posting-description")?.innerText?.trim() || "";
+    jd = document.querySelector("#content, .section-wrapper, .posting-description, .job-description")?.innerText?.trim() || "";
   }
 
   // Fallbacks: If user highlighted text, use the selection
@@ -34,12 +40,15 @@ function extractJobDetails() {
     jd = selectedText;
   }
 
-  // Generic fallback: grab largest text block or article/main
+  // Generic fallback: grab the largest readable text block in a job-like
+  // container (cheap, bounded — no full-page scan that could freeze a busy SPA).
   if (!jd) {
-    const mainEl = document.querySelector("article, main, .job-description, .description");
-    if (mainEl) {
-      jd = mainEl.innerText.trim();
-    }
+    const sel = document.querySelector(
+      "article, main, .job-description, .jobDescriptionText, .description, #job-details, " +
+      "[class*='job-description'], [class*='job-posting'], [data-testid*='job']"
+    );
+    const t = (sel && sel.innerText || "").trim();
+    if (t.length > 120) jd = t;
   }
 
   return { title, company, jd };
@@ -47,44 +56,36 @@ function extractJobDetails() {
 
 // ---------------------------------------------------------------------------
 // One-Tap Floating Action Button (FAB)
-// Injects a small ⚡ button in the page corner. Tapping it extracts the JD and
-// POSTs directly to the local server, turning the resume-tailoring flow into a
-// single tap. Hosted in a closed Shadow DOM so site CSS can't leak in, and the
-// FAB's own styles can't leak out.
+// A small ⚡ button docks in the bottom-right corner of job pages. Tapping it
+// extracts the JD, POSTs it to the local server, and shows a live progress /
+// result panel right on the page — one tap, no popup. Hosted in a closed
+// Shadow DOM so site CSS can't leak in and the FAB's own styles can't leak out.
 // ---------------------------------------------------------------------------
 const FAB_HOST_ID = "flash-resume-fab-host";
 
-function fabVisible() {
-  // Show the FAB only on job-looking content: either a site-specific JD block
-  // is present, or the user has selected a chunk of text.
-  const details = extractJobDetails();
-  if (details.jd && details.jd.length > 150) return true;
-  const selectedText = window.getSelection().toString().trim();
-  return selectedText.length > 50;
-}
+// Renders the button + status panel state. `panelState` is one of:
+//   idle | busy | success | error
+// NOTE: `shadow` is the root returned by attachShadow({mode:"closed"}) — for a
+// closed shadow, host.shadowRoot is null even to the creator, so we must hold
+// and pass the shadow reference itself.
+function render(shadow, panelState) {
+  const btn = shadow.querySelector("#fabBtn");
+  const panel = shadow.querySelector("#fabPanel");
+  const panelBody = shadow.querySelector("#fabPanelBody");
+  if (!btn) return;
 
-function setFabState(host, state, message) {
-  if (!host) return;
-  const btn = host.shadowRoot.querySelector("#fabBtn");
-  const toast = host.shadowRoot.querySelector("#fabToast");
-  if (btn) {
-    btn.dataset.state = state;
-    btn.disabled = state === "busy";
-    btn.textContent = state === "busy" ? "⏳" : "⚡";
-  }
-  if (toast) {
-    toast.dataset.kind = state === "error" ? "error" : state === "success" ? "success" : "idle";
-    if (message) {
-      toast.textContent = message;
-      toast.style.opacity = "1";
-      clearTimeout(host._toastTimer);
-      host._toastTimer = setTimeout(() => { toast.style.opacity = "0"; }, 4000);
-    }
-  }
+  btn.dataset.state = panelState;
+  btn.disabled = panelState === "busy";
+  btn.textContent = panelState === "busy" ? "" : "⚡";
+  btn.classList.toggle("busy", panelState === "busy");
+
+  if (!panel) return;
+  panel.classList.toggle("open", panelState !== "idle");
+  panel.dataset.state = panelState;
+  panelBody.classList.toggle("spinner", panelState === "busy");
 }
 
 function injectFab() {
-  // Skip if already injected.
   if (document.getElementById(FAB_HOST_ID)) return;
 
   const host = document.createElement("div");
@@ -94,59 +95,77 @@ function injectFab() {
     <style>
       :host { all: initial; }
       * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+      .wrap { position: fixed; right: 18px; bottom: 18px; z-index: 2147483647; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+      #fabPanel {
+        max-width: 340px; min-width: 240px; padding: 14px 16px; border-radius: 14px;
+        background: rgba(15, 23, 42, 0.96); color: #e2e8f0; font-size: 13px; line-height: 1.5;
+        box-shadow: 0 12px 34px rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08);
+        backdrop-filter: blur(10px); opacity: 0; transform: translateY(8px) scale(0.98);
+        transition: opacity .18s ease, transform .18s ease; pointer-events: none;
+      }
+      #fabPanel.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+      #fabPanel[data-state="busy"] { border-color: rgba(249, 115, 22, 0.5); }
+      #fabPanel[data-state="success"] { border-color: rgba(34, 197, 94, 0.5); }
+      #fabPanel[data-state="error"] { border-color: rgba(239, 68, 68, 0.5); }
+      .panel-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+      #fabPanel[data-state="busy"] .panel-title { color: #fb923c; }
+      #fabPanel[data-state="success"] .panel-title { color: #4ade80; }
+      #fabPanel[data-state="error"] .panel-title { color: #f87171; }
+      #fabPanelBody { color: #cbd5e1; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+      #fabPanelBody .path { color: #94a3b8; font-size: 11.5px; }
+      .spinner {
+        width: 14px; height: 14px; flex: none; border-radius: 50%;
+        border: 2px solid rgba(249,115,22,0.3); border-top-color: #fb923c;
+        animation: frspin .7s linear infinite;
+      }
+      @keyframes frspin { to { transform: rotate(360deg); } }
+      .close { margin-left: auto; background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+      .close:hover { color: #fff; }
       #fabBtn {
-        position: fixed;
-        right: 18px;
-        bottom: 18px;
-        z-index: 2147483647;
-        width: 52px;
-        height: 52px;
-        border-radius: 50%;
-        border: none;
-        cursor: pointer;
-        background: linear-gradient(135deg, #f97316, #ea580c);
-        color: #fff;
-        font-size: 24px;
-        line-height: 1;
-        box-shadow: 0 4px 14px rgba(234, 88, 12, 0.45);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: transform .15s ease;
+        width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
+        background: linear-gradient(135deg, #f97316, #ea580c); color: #fff; font-size: 22px; line-height: 1;
+        box-shadow: 0 6px 18px rgba(234, 88, 12, 0.5); display: flex; align-items: center; justify-content: center;
+        transition: transform .15s ease, box-shadow .15s ease;
       }
-      #fabBtn:hover { transform: scale(1.08); }
-      #fabBtn:disabled { opacity: .75; cursor: wait; }
-      #fabToast {
-        position: fixed;
-        right: 18px;
-        bottom: 80px;
-        z-index: 2147483647;
-        max-width: 320px;
-        padding: 10px 14px;
-        border-radius: 10px;
-        color: #fff;
-        font-size: 13px;
-        line-height: 1.4;
-        opacity: 0;
-        transition: opacity .25s ease;
-        pointer-events: none;
-      }
-      #fabToast[data-kind="success"] { background: #16a34a; }
-      #fabToast[data-kind="error"]   { background: #dc2626; }
+      #fabBtn:hover { transform: scale(1.06); box-shadow: 0 8px 24px rgba(234,88,12,0.6); }
+      #fabBtn:disabled { opacity: .8; cursor: wait; }
+      #fabBtn.busy::before { content: ""; width: 20px; height: 20px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.35); border-top-color: #fff; animation: frspin .7s linear infinite; }
     </style>
-    <button id="fabBtn" title="Flash Resume: tailor for this job">⚡</button>
-    <div id="fabToast" data-kind="idle"></div>
+    <div class="wrap">
+      <div id="fabPanel" data-state="idle">
+        <div class="panel-title">
+          <span id="fabPanelTitle">Flash Resume</span>
+          <button class="close" id="fabClose" title="Dismiss">✕</button>
+        </div>
+        <div id="fabPanelBody"></div>
+      </div>
+      <button id="fabBtn" title="Flash Resume: tailor for this job">⚡</button>
+    </div>
   `;
   document.body.appendChild(host);
 
-  // Click handler: extract JD and POST straight to the local server.
-  shadow.getElementById("fabBtn").addEventListener("click", async () => {
+  const btn = shadow.getElementById("fabBtn");
+  const panelBody = shadow.getElementById("fabPanelBody");
+  const panelTitle = shadow.getElementById("fabPanelTitle");
+  const close = shadow.getElementById("fabClose");
+
+  close.addEventListener("click", () => render(shadow, "idle"));
+
+  btn.addEventListener("click", async () => {
+    if (btn.dataset.state === "busy") return;
     const details = extractJobDetails();
     if (!details.jd) {
-      setFabState(host, "error", "No job description found on this page.");
+      panelTitle.textContent = "No job description found";
+      panelBody.textContent = "Select the job description text on the page and tap ⚡ again.";
+      render(shadow, "error");
       return;
     }
-    setFabState(host, "busy");
+    // Kick off: loud progress so the tap always visibly does something.
+    panelTitle.textContent = "Tailoring your resume…";
+    panelBody.textContent = "Detected: " + (details.title || "the job") + " @ " + (details.company || "the company");
+    render(shadow, "busy");
+
+    const start = performance.now();
     try {
       const resp = await fetch(`${API_BASE}/api/tailor`, {
         method: "POST",
@@ -162,43 +181,28 @@ function injectFab() {
         throw new Error(err.detail || "Tailoring failed");
       }
       const result = await resp.json();
-      setFabState(
-        host,
-        "success",
-        `✓ ${result.role} at ${result.company} — ${result.ats_match_score}/100, ${result.page_count} page. Saved to ${result.pdf_path}`
-      );
+      const secs = ((performance.now() - start) / 1000).toFixed(1);
+      panelTitle.textContent = `✅ ${result.ats_match_score}/100 ATS · ${result.page_count} page`;
+      panelBody.textContent = `Took ${secs}s — saved to:\n${result.pdf_path}`;
+      render(shadow, "success");
     } catch (e) {
-      setFabState(host, "error", `Flash Resume: ${e.message}`);
-    } finally {
-      // Return the button to idle shortly after success, immediately on error.
-      setTimeout(() => {
-        if (host.shadowRoot.querySelector("#fabBtn").dataset.state === "busy") {
-          setFabState(host, "idle");
-        }
-      }, 1200);
+      panelTitle.textContent = "Tailoring failed";
+      panelBody.textContent = `Flash Resume: ${e.message}\nIs the engine running? (Start it with "fs serve")`;
+      render(shadow, "error");
     }
   });
 }
 
 function initFab() {
-  // Respect the user's on/off toggle (default on).
   chrome.storage.local.get("fr_fab", (data) => {
     if (data.fr_fab === false) return;
     const maybeInit = () => {
-      if (!fabVisible()) return;
-      // Only inject once body is present.
       if (!document.body) { setTimeout(maybeInit, 300); return; }
-      if (fabVisible()) injectFab();
+      injectFab();
     };
     maybeInit();
   });
 }
-
-// Also refresh visibility on selection changes (user highlights JD text).
-document.addEventListener("selectionchange", () => {
-  if (document.getElementById(FAB_HOST_ID)) return;
-  initFab();
-});
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

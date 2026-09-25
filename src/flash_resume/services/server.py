@@ -38,6 +38,37 @@ app.add_middleware(
 )
 
 
+class PrivateNetworkAccessMiddleware:
+    """Let a public https page (the extension's floating button) reach this
+    localhost server. Chrome's Private Network Access requires a preflight that
+    answers `Access-Control-Allow-Private-Network: true`; CORSMiddleware alone
+    does not add that header, so without this a page-side fetch is blocked."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            async def send_with_headers(message):
+                if message["type"] == "http.response.start":
+                    headers = list(message.get("headers", []))
+                    pna = b"access-control-allow-private-network"
+                    if not any(k.lower() == pna for k, _ in headers):
+                        headers.append((pna, b"true"))
+                    message["headers"] = headers
+                await send(message)
+
+            await self.inner(scope, receive, send_with_headers)
+        else:
+            await self.inner(scope, receive, send)
+
+
+# Registered after CORSMiddleware so this stays outermost and can decorate the
+# OPTIONS preflight response CORS generates (short-circuited before reaching the
+# route handlers).
+app.add_middleware(PrivateNetworkAccessMiddleware)
+
+
 class TailorRequest(BaseModel):
     jd: str = Field(description="Job description text extracted from page DOM")
     company: Optional[str] = Field(default=None, description="Optional detected company name")

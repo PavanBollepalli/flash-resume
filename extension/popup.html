@@ -6,18 +6,20 @@
   <title>Flash Resume</title>
   <style>
     :root {
-      --bg-primary: #ffffff;
-      --bg-soft: #fff7ed;
-      --bg-input: #fafaf9;
-      --accent: #f97316;
-      --accent-dark: #ea580c;
-      --accent-soft: rgba(249, 115, 22, 0.1);
-      --success: #16a34a;
-      --danger: #dc2626;
-      --text-main: #1c1917;
-      --text-muted: #78716c;
-      --border: #e7e5e4;
-      --radius: 12px;
+      --bg: #0b1020;
+      --bg-soft: #131a2e;
+      --card: rgba(255, 255, 255, 0.045);
+      --card-border: rgba(255, 255, 255, 0.09);
+      --accent: #fb923c;
+      --accent-strong: #f97316;
+      --accent-glow: rgba(249, 115, 22, 0.35);
+      --success: #4ade80;
+      --danger: #f87171;
+      --text: #e8ecf4;
+      --text-muted: #8a93a6;
+      --text-faint: #5b6477;
+      --input-bg: rgba(255, 255, 255, 0.05);
+      --radius: 14px;
     }
 
     * {
@@ -29,8 +31,8 @@
 
     body {
       width: 380px;
-      background: var(--bg-primary);
-      color: var(--text-main);
+      background: linear-gradient(160deg, #0b1020 0%, #141a2e 100%);
+      color: var(--text);
       padding: 16px;
       font-size: 13px;
       line-height: 1.5;
@@ -42,24 +44,32 @@
       align-items: center;
       margin-bottom: 14px;
       padding-bottom: 12px;
-      border-bottom: 2px solid var(--bg-soft);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
     }
 
     .brand {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 9px;
     }
 
     .brand-logo {
-      font-size: 20px;
+      font-size: 18px;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9px;
+      background: linear-gradient(135deg, #f97316, #ea580c);
+      box-shadow: 0 4px 14px var(--accent-glow);
     }
 
     .brand h1 {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 800;
       letter-spacing: -0.02em;
-      background: linear-gradient(135deg, #f97316, #ea580c);
+      background: linear-gradient(135deg, #fdba74, #f97316);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -71,9 +81,9 @@
     }
 
     .icon-btn {
-      background: none;
-      border: 1px solid var(--border);
-      border-radius: 7px;
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
       width: 28px;
       height: 28px;
       display: inline-flex;
@@ -81,12 +91,14 @@
       justify-content: center;
       cursor: pointer;
       font-size: 13px;
+      color: var(--text-muted);
       transition: all 0.15s;
     }
 
     .icon-btn:hover {
-      background: var(--bg-soft);
+      background: rgba(249, 115, 22, 0.15);
       border-color: var(--accent);
+      color: var(--accent);
     }
 
     .status-badge {
@@ -97,9 +109,9 @@
       font-weight: 600;
       padding: 4px 9px;
       border-radius: 999px;
-      background: rgba(22, 163, 74, 0.1);
+      background: rgba(74, 222, 128, 0.12);
       color: var(--success);
-      border: 1px solid rgba(22, 163, 74, 0.25);
+      border: 1px solid rgba(74, 222, 128, 0.25);
     }
 
     .status-dot {
@@ -108,30 +120,33 @@
       border-radius: 50%;
       background: var(--success);
       animation: pulse 2s infinite;
+      box-shadow: 0 0 8px rgba(74, 222, 128, 0.8);
     }
 
     .status-badge.offline {
-      background: rgba(220, 38, 38, 0.08);
+      background: rgba(248, 113, 113, 0.1);
       color: var(--danger);
-      border-color: rgba(220, 38, 38, 0.25);
+      border-color: rgba(248, 113, 113, 0.25);
     }
 
     .status-badge.offline .status-dot {
       background: var(--danger);
+      box-shadow: 0 0 8px rgba(248, 113, 113, 0.8);
       animation: none;
     }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.5; transform: scale(0.85); }
+      50% { opacity: 0.55; transform: scale(0.82); }
     }
 
     .card {
-      background: var(--bg-soft);
-      border: 1px solid var(--border);
+      background: var(--card);
+      border: 1px solid var(--card-border);
       border-radius: var(--radius);
       padding: 14px;
       margin-bottom: 14px;
+      backdrop-filter: blur(8px);
       transition: border-color 0.2s;
     }
 
@@ -140,11 +155,11 @@
     }
 
     .card-title {
-      font-size: 11px;
+      font-size: 10px;
       text-transform: uppercase;
       font-weight: 700;
-      letter-spacing: 0.05em;
-      color: var(--accent-dark);
+      letter-spacing: 0.08em;
+      color: var(--accent);
       margin-bottom: 10px;
     }
 
@@ -166,19 +181,21 @@
 
     input, textarea {
       width: 100%;
-      background: var(--bg-input);
-      border: 1px solid var(--border);
-      color: var(--text-main);
+      background: var(--input-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text);
       padding: 8px 10px;
-      border-radius: 8px;
+      border-radius: 10px;
       font-size: 12px;
       outline: none;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
 
+    input::placeholder, textarea::placeholder { color: var(--text-faint); }
+
     input:focus, textarea:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+      box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18);
     }
 
     textarea {
@@ -188,10 +205,10 @@
 
     .btn {
       width: 100%;
-      padding: 10px 16px;
-      border-radius: 9px;
+      padding: 11px 16px;
+      border-radius: 11px;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       border: none;
       cursor: pointer;
       display: flex;
@@ -203,20 +220,19 @@
 
     .btn-primary {
       background: linear-gradient(135deg, #f97316, #ea580c);
-      color: #ffffff;
-      box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+      color: #fff;
+      box-shadow: 0 6px 18px var(--accent-glow);
     }
 
     .btn-primary:hover:not(:disabled) {
-      background: linear-gradient(135deg, #ea580c, #c2410c);
+      background: linear-gradient(135deg, #fb923c, #f97316);
       transform: translateY(-1px);
-      box-shadow: 0 6px 16px rgba(249, 115, 22, 0.4);
+      box-shadow: 0 8px 24px var(--accent-glow);
     }
 
     .btn-primary:disabled {
       opacity: 0.55;
       cursor: not-allowed;
-      transform: none;
     }
 
     .result-view {
@@ -231,9 +247,10 @@
     }
 
     .score-circle {
-      font-size: 20px;
+      font-size: 24px;
       font-weight: 800;
       color: var(--success);
+      text-shadow: 0 0 18px rgba(74, 222, 128, 0.5);
     }
 
     .chip-container {
@@ -244,10 +261,10 @@
     }
 
     .chip {
-      background: var(--accent-soft);
-      color: var(--accent-dark);
-      border: 1px solid rgba(249, 115, 22, 0.25);
-      border-radius: 6px;
+      background: rgba(249, 115, 22, 0.14);
+      color: var(--accent);
+      border: 1px solid rgba(249, 115, 22, 0.28);
+      border-radius: 7px;
       padding: 2px 8px;
       font-size: 11px;
       font-weight: 600;
@@ -269,24 +286,25 @@
 
     .notification {
       padding: 9px 12px;
-      border-radius: 8px;
+      border-radius: 10px;
       font-size: 11.5px;
       margin-bottom: 12px;
       display: none;
     }
 
     .notification.warn {
-      background: var(--accent-soft);
+      background: rgba(249, 115, 22, 0.13);
       border: 1px solid rgba(249, 115, 22, 0.3);
-      color: var(--accent-dark);
+      color: var(--accent);
       display: block;
     }
 
     .notification.warn code {
-      background: rgba(249, 115, 22, 0.12);
+      background: rgba(249, 115, 22, 0.22);
       padding: 1px 5px;
       border-radius: 4px;
-      font-weight: 600;
+      font-weight: 700;
+      color: #fdba74;
     }
 
     .setup-card {
@@ -312,7 +330,7 @@
     }
 
     .footer-links button:hover {
-      color: var(--accent-dark);
+      color: var(--accent);
     }
 
     /* How-to guide panel */
@@ -327,11 +345,11 @@
       flex-direction: column;
       gap: 8px;
       font-size: 12px;
-      color: var(--text-main);
+      color: var(--text);
     }
 
     .guide li b {
-      color: var(--accent-dark);
+      color: var(--accent);
     }
 
     @media (prefers-reduced-motion: reduce) {
