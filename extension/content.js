@@ -71,18 +71,43 @@ const FAB_HOST_ID = "flash-resume-fab-host";
 function render(shadow, panelState) {
   const btn = shadow.querySelector("#fabBtn");
   const panel = shadow.querySelector("#fabPanel");
-  const panelBody = shadow.querySelector("#fabPanelBody");
+  const spinner = shadow.querySelector("#panelSpinner");
   if (!btn) return;
 
   btn.dataset.state = panelState;
   btn.disabled = panelState === "busy";
-  btn.textContent = panelState === "busy" ? "" : "⚡";
+  btn.textContent = panelState === "busy" ? "" : "";
+  if (panelState !== "busy") {
+    // Ensure SVG stays in place (textContent clears children)
+    const svg = shadow.getElementById("fabIcon");
+    if (!svg) {
+      const svgNS = "http://www.w3.org/2000/svg";
+      const s = document.createElementNS(svgNS, "svg");
+      s.id = "fabIcon";
+      s.setAttribute("viewBox", "0 0 24 24");
+      s.setAttribute("fill", "none");
+      s.setAttribute("stroke", "white");
+      s.setAttribute("stroke-width", "1.5");
+      s.setAttribute("stroke-linecap", "round");
+      s.setAttribute("stroke-linejoin", "round");
+      const path = document.createElementNS(svgNS, "path");
+      path.setAttribute("d", "M13 2L3 14h9l-1 8 10-12h-9l1-8z");
+      s.appendChild(path);
+      btn.appendChild(s);
+    }
+  } else {
+    // Clear the SVG during busy state
+    const svg = shadow.getElementById("fabIcon");
+    if (svg) svg.remove();
+  }
   btn.classList.toggle("busy", panelState === "busy");
+
+  // Only the little title spinner rotates — never the body text.
+  if (spinner) spinner.style.display = panelState === "busy" ? "inline-block" : "none";
 
   if (!panel) return;
   panel.classList.toggle("open", panelState !== "idle");
   panel.dataset.state = panelState;
-  panelBody.classList.toggle("spinner", panelState === "busy");
 }
 
 function injectFab() {
@@ -104,18 +129,18 @@ function injectFab() {
         transition: opacity .18s ease, transform .18s ease; pointer-events: none;
       }
       #fabPanel.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-      #fabPanel[data-state="busy"] { border-color: rgba(249, 115, 22, 0.5); }
+      #fabPanel[data-state="busy"] { border-color: rgba(59, 130, 246, 0.5); }
       #fabPanel[data-state="success"] { border-color: rgba(34, 197, 94, 0.5); }
       #fabPanel[data-state="error"] { border-color: rgba(239, 68, 68, 0.5); }
       .panel-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; margin-bottom: 6px; }
-      #fabPanel[data-state="busy"] .panel-title { color: #fb923c; }
+      #fabPanel[data-state="busy"] .panel-title { color: #60a5fa; }
       #fabPanel[data-state="success"] .panel-title { color: #4ade80; }
       #fabPanel[data-state="error"] .panel-title { color: #f87171; }
       #fabPanelBody { color: #cbd5e1; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
       #fabPanelBody .path { color: #94a3b8; font-size: 11.5px; }
       .spinner {
         width: 14px; height: 14px; flex: none; border-radius: 50%;
-        border: 2px solid rgba(249,115,22,0.3); border-top-color: #fb923c;
+        border: 2px solid rgba(59,130,246,0.3); border-top-color: #60a5fa;
         animation: frspin .7s linear infinite;
       }
       @keyframes frspin { to { transform: rotate(360deg); } }
@@ -123,23 +148,26 @@ function injectFab() {
       .close:hover { color: #fff; }
       #fabBtn {
         width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
-        background: linear-gradient(135deg, #f97316, #ea580c); color: #fff; font-size: 22px; line-height: 1;
-        box-shadow: 0 6px 18px rgba(234, 88, 12, 0.5); display: flex; align-items: center; justify-content: center;
+        background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; font-size: 22px; line-height: 1;
+        box-shadow: 0 6px 18px rgba(59, 130, 246, 0.5); display: flex; align-items: center; justify-content: center;
         transition: transform .15s ease, box-shadow .15s ease;
       }
-      #fabBtn:hover { transform: scale(1.06); box-shadow: 0 8px 24px rgba(234,88,12,0.6); }
+      #fabBtn:hover { transform: scale(1.06); box-shadow: 0 8px 24px rgba(59, 130, 246, 0.6); }
       #fabBtn:disabled { opacity: .8; cursor: wait; }
+      #fabBtn svg { width: 26px; height: 26px; display: block; pointer-events: none; }
+      #fabBtn.busy svg { display: none; }
       #fabBtn.busy::before { content: ""; width: 20px; height: 20px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.35); border-top-color: #fff; animation: frspin .7s linear infinite; }
     </style>
     <div class="wrap">
       <div id="fabPanel" data-state="idle">
         <div class="panel-title">
+          <span id="panelSpinner" class="spinner" style="display:none"></span>
           <span id="fabPanelTitle">Flash Resume</span>
           <button class="close" id="fabClose" title="Dismiss">✕</button>
         </div>
         <div id="fabPanelBody"></div>
       </div>
-      <button id="fabBtn" title="Flash Resume: tailor for this job">⚡</button>
+      <button id="fabBtn" title="Flash Resume: tailor for this job"><svg id="fabIcon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></button>
     </div>
   `;
   document.body.appendChild(host);

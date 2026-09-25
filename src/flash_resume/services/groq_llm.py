@@ -9,6 +9,7 @@ prompt plus post-parse validation into the TailorPlan schema.
 from __future__ import annotations
 
 import json
+import re
 from typing import Optional
 
 from openai import OpenAI
@@ -122,6 +123,9 @@ Return ONLY the JSON object, no commentary.
                 "The model likely exhausted its token budget on reasoning — "
                 "try again, or switch the Groq model in your config."
             )
+        # Groq sometimes emits JSON with `+`-signed numbers like `+1` — strip
+        # those to make valid JSON before parsing.
+        text = re.sub(r":\s*\+(\d+)", r": \1", text)
         data = json.loads(text)
         if company_override:
             data["company"] = company_override

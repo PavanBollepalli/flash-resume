@@ -10,9 +10,9 @@
       --bg-soft: #131a2e;
       --card: rgba(255, 255, 255, 0.045);
       --card-border: rgba(255, 255, 255, 0.09);
-      --accent: #fb923c;
-      --accent-strong: #f97316;
-      --accent-glow: rgba(249, 115, 22, 0.35);
+      --accent: #3b82f6;
+      --accent-strong: #2563eb;
+      --accent-glow: rgba(59, 130, 246, 0.35);
       --success: #4ade80;
       --danger: #f87171;
       --text: #e8ecf4;
@@ -61,7 +61,7 @@
       align-items: center;
       justify-content: center;
       border-radius: 9px;
-      background: linear-gradient(135deg, #f97316, #ea580c);
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
       box-shadow: 0 4px 14px var(--accent-glow);
     }
 
@@ -69,7 +69,7 @@
       font-size: 15px;
       font-weight: 800;
       letter-spacing: -0.02em;
-      background: linear-gradient(135deg, #fdba74, #f97316);
+      background: linear-gradient(135deg, #93c5fd, #3b82f6);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -195,7 +195,7 @@
 
     input:focus, textarea:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
     }
 
     textarea {
@@ -219,13 +219,13 @@
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, #f97316, #ea580c);
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
       color: #fff;
       box-shadow: 0 6px 18px var(--accent-glow);
     }
 
     .btn-primary:hover:not(:disabled) {
-      background: linear-gradient(135deg, #fb923c, #f97316);
+      background: linear-gradient(135deg, #60a5fa, #3b82f6);
       transform: translateY(-1px);
       box-shadow: 0 8px 24px var(--accent-glow);
     }
@@ -261,9 +261,9 @@
     }
 
     .chip {
-      background: rgba(249, 115, 22, 0.14);
+      background: rgba(59, 130, 246, 0.14);
       color: var(--accent);
-      border: 1px solid rgba(249, 115, 22, 0.28);
+      border: 1px solid rgba(59, 130, 246, 0.28);
       border-radius: 7px;
       padding: 2px 8px;
       font-size: 11px;
@@ -293,18 +293,18 @@
     }
 
     .notification.warn {
-      background: rgba(249, 115, 22, 0.13);
-      border: 1px solid rgba(249, 115, 22, 0.3);
+      background: rgba(59, 130, 246, 0.13);
+      border: 1px solid rgba(59, 130, 246, 0.3);
       color: var(--accent);
       display: block;
     }
 
     .notification.warn code {
-      background: rgba(249, 115, 22, 0.22);
+      background: rgba(59, 130, 246, 0.22);
       padding: 1px 5px;
       border-radius: 4px;
       font-weight: 700;
-      color: #fdba74;
+      color: #93c5fd;
     }
 
     .setup-card {
