@@ -17,7 +17,9 @@
 
 ## 🚪 Why Flash Resume
 
-Applying to jobs today means juggling **three tabs** — job board, ChatGPT, and a LaTeX/Overleaf editor — then praying the result still fits on **one page**. Full-document AI rewrites take 15+ seconds, **invent experience you never had**, and silently spill your resume onto page 2 (an instant auto-reject for most ATS).
+> **Stop the manual 3-tab shuffle** — Job Board ↔ ChatGPT ↔ Overleaf. Full-document AI rewrites take 15+ seconds, hallucinate experience, and push single-page resumes onto page 2.
+
+Applying to jobs that way means juggling **three tabs** — job board, ChatGPT, and a LaTeX/Overleaf editor — then praying the result still fits on **one page**. When it doesn't, you're staring at an instant auto-reject.
 
 **Flash Resume kills that loop.** It surgically injects the job's keywords into bullets you already have, compiles locally at sub-100ms, and *verifies* the single-page fit before you upload. What used to take a coffee break now takes **one tap**.
 
@@ -75,7 +77,7 @@ flowchart LR
     subgraph Local["Your machine — 127.0.0.1:13450"]
         API["FastAPI companion daemon<br/>(fs serve)"] --> TAILOR["TailorEngine<br/>pipeline"]
         TAILOR --> LLM{"AI provider"}
-        LLM -->|quality| GEM["Gemini Flash<br/>~15–20s"]
+        LLM -->|quality| GEM["Gemini Flash<br/>~5–9s"]
         LLM -->|speed| GROQ["Groq gpt-oss-20b<br/>~3s"]
         TAILOR --> TYPST["Typst compiler<br/><0.1s"] --> PYPDF["pypdf<br/>1-page verification"]
         TYPST --> PDF["PDF + JSON + diff"]
