@@ -466,7 +466,7 @@ def setup_cmd() -> None:
 
     # 1. Provider choice
     console.print("\n[bold]Step 1: AI Provider[/bold]")
-    console.print("  [bold cyan]1[/bold cyan] - Gemini (best quality, ~15-20s per tailor)")
+    console.print("  [bold cyan]1[/bold cyan] - Gemini (best quality, ~6-9s per tailor)")
     console.print("  [bold cyan]2[/bold cyan] - Groq   (fastest, ~1-3s per tailor)")
     provider_choice = Prompt.ask("Select a provider", choices=["1", "2"], default="2" if cfg.llm_provider == "groq" else "1")
     cfg.llm_provider = "groq" if provider_choice == "2" else "gemini"
