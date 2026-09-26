@@ -556,7 +556,7 @@ wheels = [
 
 [[package]]
 name = "flash-resume"
-version = "0.2.4"
+version = "0.2.6"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi", extra = ["standard"] },

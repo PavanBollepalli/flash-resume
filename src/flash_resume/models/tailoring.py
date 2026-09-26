@@ -44,6 +44,19 @@ class TailorPlan(BaseModel):
     summary_edit: Optional[str] = Field(default=None, description="Optional tailored professional bio summary")
 
 
+class JDKeywords(BaseModel):
+    """ATS-relevant keywords extracted from a job description by the LLM (call #1)."""
+
+    required_keywords: List[str] = Field(
+        default_factory=list,
+        description="Hard requirements / ATS-critical keywords from the JD",
+    )
+    preferred_keywords: List[str] = Field(
+        default_factory=list,
+        description="Nice-to-have / preferred ('preferred qualifications') keywords",
+    )
+
+
 class TailorResult(BaseModel):
     """Final artifact generation details and verification metrics."""
 
@@ -55,4 +68,8 @@ class TailorResult(BaseModel):
     compile_time_ms: float = Field(default=0.0, description="Local Typst compilation time in ms")
     total_time_ms: float = Field(default=0.0, description="Total tailoring pipeline time in ms")
     plan: TailorPlan = Field(description="The underlying tailoring plan applied")
+    trim_applied: bool = Field(
+        default=False,
+        description="Whether content was auto-trimmed to fit the page budget",
+    )
 

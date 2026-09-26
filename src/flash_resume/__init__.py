@@ -14,4 +14,10 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-__version__ = "0.2.3"
+try:
+    from importlib.metadata import version as _version
+
+    __version__ = _version("flash-resume")
+except Exception:
+    # Fallback if the package isn't installed (e.g. running from source).
+    __version__ = "0.2.6"

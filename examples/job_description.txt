@@ -1,20 +1,64 @@
-Backend Software Engineer - Datadog
+Software Engineer — Google
+Minimum qualifications
+Bachelor's degree in Computer Science, Engineering, Mathematics, or a related technical field, or equivalent practical experience.
+Experience with software development in one or more general-purpose programming languages such as Python, Java, C++, or JavaScript/TypeScript.
+Experience with data structures, algorithms, and object-oriented design.
+Experience developing and maintaining software applications, services, or APIs.
+Preferred qualifications
+Master's degree in Computer Science or a related technical field.
+Experience designing and implementing scalable distributed systems.
+Experience developing backend services and RESTful APIs.
+Experience with cloud platforms and cloud-based infrastructure.
+Experience with databases such as MySQL, PostgreSQL, MongoDB, or similar technologies.
+Experience with containerization technologies such as Docker and modern CI/CD practices.
+Experience with frontend technologies such as React, JavaScript, HTML, and CSS.
+Experience with machine learning, natural language processing, generative AI, or large language models.
+Experience building production AI/ML systems or integrating machine learning models into software applications.
+Knowledge of asynchronous processing, system design, networking, security, and performance optimization.
+Experience working with cross-functional engineering teams.
+About the role
 
-About the Role:
-We are seeking a talented Backend Software Engineer to join our Core Infrastructure team. You will design, build, and maintain high-throughput distributed microservices handling telemetry and observability data at massive scale.
+As a Software Engineer, you will design, develop, test, deploy, and maintain software systems that solve complex technical problems at scale. You will work closely with other engineers, product managers, and technical stakeholders to build reliable and maintainable services and applications.
 
-Key Responsibilities:
-- Design and implement highly reliable REST and gRPC microservices using Python and Go.
-- Optimize distributed storage systems, relational databases (PostgreSQL), and key-value datastores (Redis).
-- Build and maintain CI/CD pipelines, containerized deployments using Docker and Kubernetes in AWS cloud environments.
-- Drive latency optimization, p99 tail latency reduction, and observability monitoring using Prometheus/Grafana.
-- Collaborate with product and platform teams to ensure 99.99% service availability.
+You will participate throughout the software development lifecycle, including requirements analysis, system design, implementation, testing, deployment, monitoring, and continuous improvement.
 
-Requirements & Qualifications:
-- 2+ years of professional software engineering experience.
-- Strong proficiency in Python (FastAPI / Django) or Go.
-- Experience with PostgreSQL, query tuning, and Redis caching.
-- Hands-on experience with cloud infrastructure (AWS) and containers (Docker, Kubernetes).
-- Familiarity with CI/CD automation, distributed systems, and Kafka or message queues is a big plus.
-- Bachelor's degree in Computer Science or equivalent practical experience.
+You will contribute to backend and full-stack systems, develop APIs and services, work with databases and cloud infrastructure, and improve the reliability and performance of production applications.
 
+Depending on the team, you may work on distributed systems, developer infrastructure, data processing pipelines, machine learning applications, or AI-powered products.
+
+Responsibilities
+Design and implement reliable, scalable, and maintainable software components and services.
+Develop backend applications and RESTful APIs using languages such as Python, Java, C++, or JavaScript/TypeScript.
+Build and optimize data processing pipelines for high-volume workloads.
+Design database schemas and develop efficient data access patterns using relational and NoSQL databases.
+Develop and integrate machine learning and AI capabilities into software applications.
+Work with engineers to design distributed and asynchronous processing systems.
+Improve application performance, reliability, scalability, and observability.
+Write clean, maintainable, well-tested code and participate in code reviews.
+Develop automated tests and contribute to CI/CD pipelines.
+Deploy and operate services using cloud infrastructure and containerized environments.
+Identify technical problems, investigate root causes, and implement effective solutions.
+Collaborate with cross-functional teams to define requirements and deliver high-quality software.
+Document technical designs, implementation decisions, and operational procedures.
+Continuously evaluate new technologies and engineering practices that can improve development and system performance.
+Technical environment
+
+The team may work with technologies including:
+
+Programming: Python, Java, C++, JavaScript, TypeScript
+
+Backend: REST APIs, FastAPI, Django, Node.js, distributed services
+
+Frontend: React, HTML, CSS
+
+Databases: MySQL, PostgreSQL, MongoDB, relational and NoSQL databases
+
+Cloud & Infrastructure: Cloud platforms, Docker, CI/CD, monitoring, scalable infrastructure
+
+AI/ML: Machine Learning, NLP, Generative AI, Large Language Models, RAG, model inference pipelines
+
+Engineering: Data Structures & Algorithms, Object-Oriented Design, System Design, Testing, Performance Optimization, Security
+
+Equal Opportunity
+
+Google is committed to creating a diverse and inclusive workplace and provides equal employment opportunities to qualified applicants.

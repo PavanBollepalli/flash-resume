@@ -251,11 +251,11 @@
 ]
 
 // Overflow is a different class of problem -- it's not a content-quality
-// opinion, it's "this file violates the one-page spec." In lint mode,
-// show it as a warning for review. Outside lint mode -- i.e. a normal
-// production compile -- fail the build entirely rather than silently
-// shipping a 2-page PDF with a red banner on it. A submittable resume
-// must never be the thing that reveals its own defect to the recruiter.
+// opinion, it's "this file violates the one-page spec." In lint mode, show
+// it as a red banner for review. Outside lint mode the template stays
+// silent: page-budget enforcement (density fallback + content trimming)
+// lives in the Python compiler, and a panic here would kill the density
+// fallback before it ever got a chance to run.
 #context {
   let total = counter(page).final().first()
   if total > 1 {
@@ -264,8 +264,6 @@
       #text(fill: red, weight: "bold", size: 9pt)[
         ⚠ OVERFLOW: this resume is #total pages at density="#density". Cut content or use a denser density.
       ]
-    ] else {
-      panic("OVERFLOW: resume is " + str(total) + " pages at density=\"" + density + "\". Refusing to produce output -- reduce content or pass a denser --input density.")
-    }
+    ]
   }
 }

@@ -13,11 +13,11 @@ def test_master_resume_serialization():
     data = json.loads(example_path.read_text(encoding="utf-8"))
     resume = MasterResume(**data)
 
-    assert resume.contact.name == "Alex Chen"
+    assert resume.contact.name == "CHANDRAGIRI MANOJ KRISHNA"
     assert len(resume.skills) >= 3
-    assert len(resume.experience) >= 2
-    assert len(resume.projects) >= 2
-    assert resume.experience[0].company == "CloudScale Technologies"
+    assert len(resume.experience) >= 1
+    assert len(resume.projects) >= 1
+    assert resume.experience[0].company == "Om Tech"
 
 
 def test_tailor_plan_model():

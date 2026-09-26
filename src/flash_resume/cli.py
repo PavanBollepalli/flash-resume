@@ -311,7 +311,11 @@ def tailor_cmd(
     if dry_run:
         console.print("[bold yellow]⚡ Running in DRY-RUN mode (Simulated ATS optimization)...[/bold yellow]")
         from flash_resume.models.tailoring import TailorPlan
-        from flash_resume.services.tailor import apply_tailor_plan, generate_diff_markdown
+        from flash_resume.services.tailor import (
+            apply_tailor_plan,
+            generate_diff_markdown,
+            trim_resume_to_fit,
+        )
 
         resume_path = Path(cfg.master_resume_path)
         master_resume = MasterResume.model_validate_json(resume_path.read_text(encoding="utf-8"))
@@ -336,7 +340,9 @@ def tailor_cmd(
         json_path = out_base / f"{target_company}_{target_role.replace(' ', '_')}.json"
         diff_path = out_base / f"{target_company}_{target_role.replace(' ', '_')}.diff.md"
 
-        pages, compile_ms = compiler.compile(tailored, pdf_path, max_pages=cfg.max_pages)
+        tailored, pages, compile_ms, _ = trim_resume_to_fit(
+            tailored, compiler, pdf_path, max_pages=cfg.max_pages
+        )
         json_path.write_text(tailored.model_dump_json(indent=2), encoding="utf-8")
         diff_path.write_text(
             generate_diff_markdown(master_resume, tailored, mock_plan, pages, compile_ms),

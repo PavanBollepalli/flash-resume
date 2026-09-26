@@ -36,6 +36,11 @@ def display_tailor_summary(result: TailorResult) -> None:
         )
     )
 
+    if result.trim_applied:
+        console.print(
+            "[yellow]⚠ Content was auto-trimmed to fit 1 page — review the PDF before submitting.[/yellow]"
+        )
+
     # 2. Keywords Table/Panel
     if plan.matched_keywords:
         kw_badges = "  ".join(f"[bold black on cyan] {kw} [/]" for kw in plan.matched_keywords)
