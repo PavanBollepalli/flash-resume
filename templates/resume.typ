@@ -1,3 +1,19 @@
+// ---------------------------------------------------------------------
+// Data-driven resume template.
+// Visual structure ported verbatim from the approved static resume.typ
+// (all-caps section headers, tilde-separated contact line, two-line
+// grid headers for education/experience/projects, grouped
+// certifications). Input contract (data_path / density / compact /
+// lint) matches the app's existing template so nothing on the calling
+// side needs to change.
+//
+// Compile with:
+//   typst compile template.typ output.pdf \
+//     --input data_path=resume.json \
+//     --input density=tight|compact|standard \
+//     --input lint=true   (optional, review-only warnings)
+// ---------------------------------------------------------------------
+
 #let data-path = sys.inputs.at("data_path", default: "resume.json")
 #assert(
   not data-path.contains(".."),
@@ -10,210 +26,186 @@
   allowed-densities.contains(density),
   message: "Unknown density '" + density + "'. Expected one of: " + allowed-densities.join(", "),
 )
-#let font-size = 10.5pt
-#let line-spacing = if density == "tight" { 0.62em } else if density == "compact" { 0.70em } else { 0.78em }
-#let section-spacing = if density == "tight" { 0.42em } else if density == "compact" { 0.58em } else { 0.72em }
-#let item-spacing = if density == "tight" { 0.18em } else if density == "compact" { 0.25em } else { 0.34em }
-// Separate token for paragraph-level breaks (title -> location -> tech
-// line) -- deliberately larger than item-spacing (bullet-to-bullet) so
-// the two kinds of gap stay visually distinct, but nowhere near Typst's
-// oversized ~1.2em default that caused the original "Remote" floating gap.
-#let para-spacing = if density == "tight" { 0.30em } else if density == "compact" { 0.40em } else { 0.50em }
+
+// "tight" reproduces the exact hand-tuned one-page constants from the
+// approved static file. compact/standard loosen progressively, same
+// density-fallback pattern as the rest of the pipeline.
+#let font-size = if density == "tight" { 9.6pt } else if density == "compact" { 10pt } else { 10.5pt }
+#let line-spacing = if density == "tight" { 0.42em } else if density == "compact" { 0.50em } else { 0.58em }
+#let section-spacing = if density == "tight" { 0.18em } else if density == "compact" { 0.30em } else { 0.42em }
+#let item-spacing = if density == "tight" { 0.38em } else if density == "compact" { 0.45em } else { 0.55em }
+#let para-spacing = if density == "tight" { 0.55em } else if density == "compact" { 0.65em } else { 0.75em }
 
 #let resume = json(data-path)
 #let contact = resume.at("contact", default: (:))
 #let contact-name = contact.at("name", default: "")
-#let contact-location = contact.at("location", default: "")
-#let contact-phone = contact.at("phone", default: "")
 
 #set document(
   author: contact-name,
   title: contact-name + " - Resume",
 )
 
-#let page-margin-v = if density == "tight" { 0.50in } else if density == "compact" { 0.55in } else { 0.60in }
-#let page-margin-h = if density == "tight" { 0.50in } else if density == "compact" { 0.60in } else { 0.68in }
+#let page-margin-v = if density == "tight" { 1.1cm } else if density == "compact" { 1.3cm } else { 1.5cm }
+#let page-margin-h = if density == "tight" { 1.5cm } else if density == "compact" { 1.7cm } else { 1.9cm }
 
 #set page(
-  paper: "a4",
-  margin: (
-    top: page-margin-v,
-    bottom: page-margin-v,
-    left: page-margin-h,
-    right: page-margin-h,
-  ),
+  margin: (top: page-margin-v, bottom: page-margin-v, left: page-margin-h, right: page-margin-h),
 )
 
-#set text(
-  size: font-size,
-  font: ("Liberation Serif", "Times New Roman", "DejaVu Serif"),
-  fill: black,
-  spacing: 100%,
-  lang: "en",
-)
+#set text(font: "New Computer Modern", size: font-size, lang: "en")
+#set par(justify: true, leading: line-spacing, spacing: para-spacing)
+#set block(spacing: para-spacing)
 
-#set par(
-  leading: line-spacing,
-  justify: true,
-  // Explicitly tie inter-paragraph spacing to the same density scale as
-  // everything else. Left unset, Typst falls back to its own default
-  // (~1.2em), which is why the title/location/tech-line transitions had
-  // a much bigger gap than the deliberately tight list-item spacing
-  // right below them -- two unrelated spacing values fighting inside
-  // what should read as one visually consistent block.
-  spacing: para-spacing,
-)
-
-#let section-header(title) = {
-  v(section-spacing)
-  text(weight: "bold", size: font-size + 1.1pt)[#upper(title)]
-  v(3pt, weak: true)
-  line(length: 100%, stroke: 0.55pt + black)
-  v(item-spacing)
-}
-
-#let contact-link(url, label) = {
-  if url != none and url != "" {
-    let clean = url.trim("https://").trim("http://").trim("/")
-    [#h(0.35em) | #h(0.35em) #link("https://" + clean)[#label]]
-  }
-}
-
-#align(center)[
-  #text(weight: "bold", size: font-size + 6pt)[#contact-name] \
-  #if contact.at("title", default: none) != none [
-    #v(1pt)
-    #text(weight: "bold", size: font-size + 0.5pt)[#contact.title] \
-  ]
-  #v(2pt)
-  #text(size: font-size - 0.45pt)[
-    #contact-location #h(0.35em) | #h(0.35em) #contact-phone
-    #if contact.at("email", default: "") != "" [
-      #h(0.35em) | #h(0.35em) #link("mailto:" + contact.email)[#contact.email]
-    ]
-    #contact-link(contact.at("linkedin", default: none), contact.at("linkedin", default: ""))
-    #contact-link(contact.at("github", default: none), contact.at("github", default: ""))
-    #contact-link(contact.at("portfolio", default: none), contact.at("portfolio", default: ""))
-  ]
-  #v(3pt)
+#let sectionTitle(title) = [
+  #v(section-spacing)
+  #text(size: font-size + 1.4pt, weight: "bold")[#upper(title)]
+  #line(length: 100%, stroke: 0.6pt)
+  #v(0.1em)
 ]
 
+#let sep = [ ~ ]
+
+// ---------------------------- Header ----------------------------
+#align(center)[
+  #text(size: font-size + 6.4pt, weight: "bold", tracking: 0.5pt)[#upper(contact-name)]
+  #v(0.15em)
+  #text(size: font-size - 0.1pt)[
+    #contact.at("location", default: "")#sep#contact.at("phone", default: "")
+    #if contact.at("email", default: "") != "" [
+      #sep#link("mailto:" + contact.email)[#contact.email]
+    ]
+    #if contact.at("linkedin", default: none) != none and contact.linkedin != "" [
+      #sep#link("https://" + contact.linkedin.trim("https://").trim("http://").trim("/"))[LinkedIn]
+    ]
+    #if contact.at("portfolio", default: none) != none and contact.portfolio != "" [
+      #sep#link("https://" + contact.portfolio.trim("https://").trim("http://").trim("/"))[#contact.portfolio.trim("https://").trim("http://").trim("/")]
+    ]
+    #if contact.at("github", default: none) != none and contact.github != "" [
+      #sep#link("https://" + contact.github.trim("https://").trim("http://").trim("/"))[GitHub]
+    ]
+  ]
+]
+
+// ---------------------------- Summary ----------------------------
 #if resume.at("summary", default: none) != none and resume.summary != "" [
-  #section-header("Summary")
+  #sectionTitle[Summary]
   #text(size: font-size)[#resume.summary]
 ]
 
+// ---------------------------- Skills ----------------------------
 #if resume.at("skills", default: ()).len() > 0 [
-  #section-header("Skills")
-  #for skill in resume.skills [
-    #text(weight: "bold")[#skill.category:] #skill.items.join(", ") \
-  ]
+  #sectionTitle[Technical Skills]
+  #grid(
+    columns: (auto, 1fr),
+    column-gutter: 0.6em,
+    row-gutter: 0.45em,
+    ..resume.skills.map(s => (
+      [*#s.category:*], [#s.items.join(", ")],
+    )).flatten()
+  )
 ]
 
-#if resume.at("experience", default: ()).len() > 0 [
-  #section-header("Experience")
-  #for exp in resume.experience [
-    #block(below: item-spacing)[
-      #grid(
-        columns: (1fr, auto),
-        align: (left, right),
-        [
-          #text(weight: "bold")[#exp.role -- #exp.company]
-        ],
-        [
-          #text(weight: "bold")[#exp.start_date -- #exp.end_date]
-        ]
-      )
-      #if exp.at("location", default: "") != "" [
-        #block(above: 2pt, below: 3pt)[#text(style: "italic", size: font-size - 0.45pt)[#exp.location]]
-      ]
-      #for bullet in exp.bullets [
-        #block[
-          #grid(
-            columns: (0.16in, 1fr),
-            gutter: 0.05in,
-            [•],
-            [#bullet],
-          )
-        ]
-        #v(4pt)
-      ]
-    ]
-  ]
-]
-
-#if resume.at("projects", default: ()).len() > 0 [
-  #section-header("Projects")
-  #for proj in resume.projects [
-    #block(below: item-spacing)[
-      #grid(
-        columns: (1fr, auto),
-        align: (left, right),
-        [
-          #text(weight: "bold")[#proj.name]
-        ],
-        [
-          #if proj.at("start_date", default: none) != none and proj.at("end_date", default: none) != none [
-            #text(weight: "bold")[#proj.start_date -- #proj.end_date]
-          ]
-          #if proj.at("github", default: none) != none and proj.github != "" [
-            #h(0.35em) #link(proj.github)[GitHub]
-          ]
-          #if proj.at("live_url", default: none) != none and proj.live_url != "" [
-            #h(0.35em) #link(proj.live_url)[Live]
-          ]
-          #if proj.at("github", default: none) == none and proj.at("live_url", default: none) == none and proj.at("link", default: none) != none and proj.link != "" [
-            #h(0.35em) #link(proj.link)[Link]
-          ]
-        ]
-      )
-      #if proj.at("technologies", default: ()).len() > 0 [
-        #text(style: "italic", size: font-size - 0.45pt)[#proj.technologies.join(", ")]
-      ]
-      #v(1pt)
-      #for bullet in proj.bullets [
-        #block[
-          #grid(
-            columns: (0.16in, 1fr),
-            gutter: 0.05in,
-            [•],
-            [#bullet],
-          )
-        ]
-        #v(4pt)
-      ]
-    ]
-  ]
-]
-
+// ---------------------------- Education ----------------------------
+// score_label/score_value covers both "CGPA - 8.56/10.0" and
+// "Score - 929/1000" style lines without forcing one vocabulary; falls
+// back to a plain gpa string if that's all the data has.
 #if resume.at("education", default: ()).len() > 0 [
-  #section-header("Education")
-  #for edu in resume.education [
+  #sectionTitle[Education]
+  #for (i, edu) in resume.education.enumerate() [
+    #if i > 0 [#v(0.15em)]
     #grid(
       columns: (1fr, auto),
-      align: (left, right),
+      [*#edu.institution*], [#edu.start_date -- #edu.end_date],
+    )
+    #grid(
+      columns: (1fr, auto),
       [
-        #text(weight: "bold")[#edu.degree, #edu.field_of_study]
-        #linebreak()
-        #text(style: "italic")[#edu.institution]
-        #if edu.at("gpa", default: none) != none [ (CGPA: #edu.gpa)]
+        #edu.degree
+        #if edu.at("score_label", default: none) != none and edu.at("score_value", default: none) != none [
+          --- #edu.score_label - #edu.score_value
+        ] else if edu.at("gpa", default: none) != none [
+          --- CGPA - #edu.gpa
+        ]
       ],
-      [#edu.start_date -- #edu.end_date],
+      [#edu.at("location", default: "")],
     )
   ]
 ]
 
-#if resume.at("awards", default: ()).len() > 0 or resume.at("certifications", default: ()).len() > 0 [
-  #section-header("Awards & Certifications")
-  #let award-items = resume.at("awards", default: ()) + resume.at("certifications", default: ())
-  #award-items.join("  |  ")
+// ---------------------------- Experience ----------------------------
+#if resume.at("experience", default: ()).len() > 0 [
+  #sectionTitle[Experience]
+  #for (i, exp) in resume.experience.enumerate() [
+    #if i > 0 [#v(0.25em)]
+    #grid(
+      columns: (1fr, auto),
+      [*#exp.company*], [#exp.at("location", default: "")],
+    )
+    #grid(
+      columns: (1fr, auto),
+      [#emph(exp.role)], [#exp.start_date -- #exp.end_date],
+    )
+    #v(0.2em)
+    #list(
+      spacing: item-spacing,
+      ..exp.bullets.map(b => [#b])
+    )
+  ]
 ]
 
-// Content lint: things a static schema can't enforce but shouldn't ship
-// silently -- thin entries and run-on bullets get flagged the same way
-// overflow does. GATED behind an explicit opt-in flag, defaulting to off,
-// so a normal compile (what actually gets submitted to a recruiter) is
-// always clean. Pass --input lint=true to see warnings during review.
+// ---------------------------- Projects ----------------------------
+#if resume.at("projects", default: ()).len() > 0 [
+  #sectionTitle[Projects]
+  #for (i, proj) in resume.projects.enumerate() [
+    #if i > 0 [#v(0.25em)]
+    #grid(
+      columns: (1fr, auto),
+      [*#proj.name*],
+      [
+        #if proj.at("github", default: none) != none and proj.github != "" [
+          #link(proj.github)[GitHub]
+        ] else if proj.at("live_url", default: none) != none and proj.live_url != "" [
+          #link(proj.live_url)[Live]
+        ] else if proj.at("link", default: none) != none and proj.link != "" [
+          #link(proj.link)[Link]
+        ]
+      ],
+    )
+    #list(
+      spacing: item-spacing,
+      ..proj.bullets.map(b => [#b]),
+      ..if proj.at("technologies", default: ()).len() > 0 {
+        ([*Tech Stack:* #proj.technologies.join(", ").] ,)
+      } else { () }
+    )
+  ]
+]
+
+// ---------------------------- Certifications ----------------------------
+// Grouped by category to match the approved layout. Falls back to a
+// flat pipe-joined line if the data only supplies a plain string list,
+// so older data shapes don't break.
+#if resume.at("certifications", default: ()).len() > 0 [
+  #sectionTitle[Certificates]
+  #if type(resume.certifications.at(0)) == dictionary [
+    #list(
+      spacing: item-spacing,
+      ..resume.certifications.map(g => [*#g.category:* #g.items.join(", ")])
+    )
+  ] else [
+    #resume.certifications.join("  |  ")
+  ]
+]
+
+#if resume.at("awards", default: ()).len() > 0 [
+  #sectionTitle[Awards]
+  #resume.awards.join("  |  ")
+]
+
+// -----------------------------------------------------------------
+// Content lint + overflow detection -- unchanged from the app's
+// existing template, same opt-in flag and thresholds.
+// -----------------------------------------------------------------
 #let lint-enabled = sys.inputs.at("lint", default: "false") == "true"
 #let max-bullet-chars = 180
 #let lint-warnings = if lint-enabled {
@@ -250,12 +242,6 @@
   ]
 ]
 
-// Overflow is a different class of problem -- it's not a content-quality
-// opinion, it's "this file violates the one-page spec." In lint mode, show
-// it as a red banner for review. Outside lint mode the template stays
-// silent: page-budget enforcement (density fallback + content trimming)
-// lives in the Python compiler, and a panic here would kill the density
-// fallback before it ever got a chance to run.
 #context {
   let total = counter(page).final().first()
   if total > 1 {
