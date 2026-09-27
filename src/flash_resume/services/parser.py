@@ -63,6 +63,42 @@ def sanitize_master_resume(resume: MasterResume) -> MasterResume:
     return MasterResume.model_validate(_clean(raw))
 
 
+def extract_pdf_hyperlinks(file_path: Path) -> list[str]:
+    """Return unique external URLs embedded as clickable /Link annotations.
+
+    Resume PDFs (LaTeX, Word, Canva) often show a short placeholder —
+    "GitHub", "LinkedIn", "Portfolio" — while the real URL lives only in the
+    link annotation, invisible to plain text extraction. Reading the
+    annotations recovers those URLs so the parser can fill contact.github /
+    contact.linkedin / project links.
+    """
+    urls: list[str] = []
+    seen: set[str] = set()
+    try:
+        reader = pypdf.PdfReader(str(file_path))
+    except Exception:
+        return urls
+    for page in reader.pages:
+        for annotation in page.get("/Annots") or []:
+            try:
+                annot = annotation.get_object()
+                if annot.get("/Subtype") != "/Link":
+                    continue
+                action = annot.get("/A")
+                if action is not None and action.get("/S") == "/URI":
+                    uri = str(action.get("/URI") or "").strip()
+                else:
+                    # Some producers (e.g. Word) put the URI directly on the annotation.
+                    uri = str(annot.get("/URI") or "").strip()
+                if uri and uri not in seen:
+                    seen.add(uri)
+                    urls.append(uri)
+            except Exception:
+                # One malformed annotation must never kill the whole extraction.
+                continue
+    return urls
+
+
 def extract_raw_text_from_file(file_path: Path) -> str:
     """Extract raw text from a PDF, TXT, or Markdown file."""
     if not file_path.exists():
@@ -83,6 +119,20 @@ def extract_raw_text_from_file(file_path: Path) -> str:
                 "Could not extract text from this PDF. It may be a scanned image or empty. "
                 "Please provide a text-based PDF, TXT, or Markdown file."
             )
+
+        # Recover clickable hyperlink targets that the text layer hides
+        # (placeholder labels like "GitHub" whose real URL only lives in the
+        # /Link annotation). mailto: targets also confirm the email address.
+        links = extract_pdf_hyperlinks(file_path)
+        mailto_addresses = [u[7:].strip() for u in links if u.lower().startswith("mailto:")]
+        web_links = [u for u in links if not u.lower().startswith("mailto:")]
+        if web_links:
+            full_text += "\n\n[CLICKABLE HYPERLINKS FOUND IN THIS PDF]\n"
+            full_text += "\n".join(f"- {url}" for url in web_links)
+            full_text += "\n(Use these URLs for contact.github / contact.linkedin / contact.portfolio and project links when the visible text shows only a placeholder label.)"
+        if mailto_addresses:
+            emails = ", ".join(sorted(set(mailto_addresses)))
+            full_text += f"\n[EMAIL FROM HYPERLINK: {emails}]"
         return full_text
 
     elif suffix in (".txt", ".md", ".json"):

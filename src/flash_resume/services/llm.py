@@ -98,6 +98,16 @@ TEXT CLEANING RULES:
   Certifications, DevOps, Data, License), while also listing every certification in the flat
   'certifications' array.
 
+HYPERLINK RULES:
+- The input may include a "[CLICKABLE HYPERLINKS FOUND IN THIS PDF]" section: URLs embedded
+  as clickable links in the original document, even where the visible text only shows a
+  placeholder like "GitHub", "LinkedIn", or a project name.
+- Map each URL to the correct field by its domain: github.com -> contact.github,
+  linkedin.com -> contact.linkedin, other personal/portfolio domains -> contact.portfolio;
+  project/demo/repo URLs -> the matching project's github or live_url.
+- Use "[EMAIL FROM HYPERLINK: ...]" as contact.email when the visible text does not clearly
+  show an email.
+
 Output ONLY valid JSON matching the MasterResume schema.
 """
 

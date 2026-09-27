@@ -5,7 +5,11 @@ from pathlib import Path
 import typst
 
 from flash_resume.models.resume import MasterResume
-from flash_resume.services.parser import extract_raw_text_from_file, sanitize_master_resume
+from flash_resume.services.parser import (
+    extract_pdf_hyperlinks,
+    extract_raw_text_from_file,
+    sanitize_master_resume,
+)
 
 
 def _minimal_resume(**overrides) -> MasterResume:
@@ -90,3 +94,38 @@ def test_extract_raw_text_from_absolute_pdf_path(tmp_path: Path):
     assert "Java" in text
     assert "AWS" in text
     assert "C++" in text
+
+
+def test_pdf_hyperlinks_are_recovered_from_link_annotations(tmp_path: Path):
+    """Clickable links (GitHub/LinkedIn/mailto) whose visible text is only a
+    placeholder must still reach the parser via /Link annotations."""
+    source = tmp_path / "linked.typ"
+    source.write_text(
+        "#set page(width: 10cm, height: 10cm, margin: 0.6cm)\n"
+        "Alex Chen\n"
+        '#link("https://github.com/alexchen")[GitHub]\n'
+        '#link("https://www.linkedin.com/in/alexchen")[LinkedIn]\n'
+        # Typst markup treats '@' as a label reference, so emit the visible
+        # email as a plain string expression — same rendered output.
+        '#link("mailto:alex@example.com")[#"alex@example.com"]\n',
+        encoding="utf-8",
+    )
+    pdf_bytes = typst.compile(source, root=tmp_path)
+    pdf = tmp_path / "linked_resume.pdf"
+    pdf.write_bytes(pdf_bytes)
+
+    links = extract_pdf_hyperlinks(pdf)
+
+    assert "https://github.com/alexchen" in links
+    assert "https://www.linkedin.com/in/alexchen" in links
+    assert "mailto:alex@example.com" in links
+
+    text = extract_raw_text_from_file(pdf)
+
+    # Visible placeholder labels are present...
+    assert "GitHub" in text
+    assert "LinkedIn" in text
+    # ...and the real URLs now ride along for the LLM.
+    assert "https://github.com/alexchen" in text
+    assert "https://www.linkedin.com/in/alexchen" in text
+    assert "EMAIL FROM HYPERLINK: alex@example.com" in text
