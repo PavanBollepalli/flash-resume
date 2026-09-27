@@ -20,6 +20,7 @@ from flash_resume.models.tailoring import JDKeywords, TailorPlan
 from flash_resume.services.llm import (
     CONDENSE_SYSTEM_INSTRUCTION,
     JD_EXTRACT_INSTRUCTION,
+    PARSE_RESUME_INSTRUCTION,
     TAILOR_SYSTEM_INSTRUCTION,
 )
 
@@ -48,6 +49,36 @@ class GroqLLMService:
                 )
             self._client = OpenAI(api_key=self.api_key, base_url=GROQ_BASE_URL)
         return self._client
+
+    def parse_resume_from_text(self, raw_text: str) -> MasterResume:
+        """Parse raw resume text (from PDF or text) into a structured MasterResume.
+
+        Same contract as ``LLMService.parse_resume_from_text``, using Groq's
+        JSON-mode so Groq-configured users can import a resume during setup.
+        """
+        schema_hint = json.dumps(MasterResume.model_json_schema(), indent=2)
+        response = self.client.chat.completions.create(
+            model=self.model,
+            max_completion_tokens=8192,
+            reasoning_effort="low",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": PARSE_RESUME_INSTRUCTION},
+                {
+                    "role": "system",
+                    "content": f"Respond with a single JSON object matching this JSON Schema:\n{schema_hint}",
+                },
+                {
+                    "role": "user",
+                    "content": f"CANDIDATE RAW RESUME TEXT:\n\n{raw_text}\n\nParse into MasterResume schema.",
+                },
+            ],
+        )
+        text = (response.choices[0].message.content or "").strip()
+        if not text:
+            raise ValueError("Groq returned an empty response while parsing the resume.")
+        text = re.sub(r":\s*\+(\d+)", r": \1", text)
+        return MasterResume.model_validate_json(text)
 
     def extract_jd_keywords(self, job_description: str) -> JDKeywords:
         """LLM call #1: extract ATS-relevant keywords from the job description.
@@ -205,6 +236,9 @@ Return ONLY the JSON object, no commentary.
             "education": [item.model_dump(mode="json") for item in resume.education],
             "awards": resume.awards,
             "certifications": resume.certifications,
+            "certification_groups": [
+                group.model_dump(mode="json") for group in resume.certification_groups
+            ],
         }
         overflow_block = ""
         if overflow_words > 0:

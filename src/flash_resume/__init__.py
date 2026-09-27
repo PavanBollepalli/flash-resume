@@ -20,4 +20,4 @@ try:
     __version__ = _version("flash-resume")
 except Exception:
     # Fallback if the package isn't installed (e.g. running from source).
-    __version__ = "0.2.6"
+    __version__ = "0.2.7"

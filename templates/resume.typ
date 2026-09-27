@@ -182,19 +182,22 @@
 ]
 
 // ---------------------------- Certifications ----------------------------
-// Grouped by category to match the approved layout. Falls back to a
-// flat pipe-joined line if the data only supplies a plain string list,
-// so older data shapes don't break.
-#if resume.at("certifications", default: ()).len() > 0 [
+// Prefer grouped-by-category rendering (the model's certification_groups
+// field, populated at parse time): one bold category line per group with
+// comma-separated certs. Falls back to a plain bullet list when the data
+// only supplies the flat string list, so older data shapes stay readable.
+#if resume.at("certification_groups", default: ()).len() > 0 [
   #sectionTitle[Certificates]
-  #if type(resume.certifications.at(0)) == dictionary [
-    #list(
-      spacing: item-spacing,
-      ..resume.certifications.map(g => [*#g.category:* #g.items.join(", ")])
-    )
-  ] else [
-    #resume.certifications.join("  |  ")
-  ]
+  #list(
+    spacing: item-spacing,
+    ..resume.certification_groups.map(g => [*#g.category:* #g.items.join(", ")])
+  )
+] else if resume.at("certifications", default: ()).len() > 0 [
+  #sectionTitle[Certificates]
+  #list(
+    spacing: item-spacing,
+    ..resume.certifications.map(c => [#c])
+  )
 ]
 
 #if resume.at("awards", default: ()).len() > 0 [

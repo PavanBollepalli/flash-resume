@@ -20,6 +20,20 @@ def test_master_resume_serialization():
     assert resume.experience[0].company == "Om Tech"
 
 
+def test_certification_groups_round_trip():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    data = json.loads(example_path.read_text(encoding="utf-8"))
+    data["certification_groups"] = [
+        {"category": "Cloud Certifications", "items": data.get("certifications", [])}
+    ]
+    resume = MasterResume(**data)
+
+    dumped = json.loads(resume.model_dump_json())
+    assert dumped["certification_groups"][0]["category"] == "Cloud Certifications"
+    assert dumped["certification_groups"][0]["items"] == resume.certifications
+    assert dumped["certifications"]  # flat list still serialized for back-compat
+
+
 def test_tailor_plan_model():
     plan = TailorPlan(
         company="Stripe",

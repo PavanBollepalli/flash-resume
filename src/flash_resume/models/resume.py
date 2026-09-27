@@ -70,6 +70,13 @@ class EducationItem(BaseModel):
     highlights: List[str] = Field(default_factory=list, description="Relevant coursework or academic honors")
 
 
+class CertificationGroup(BaseModel):
+    """Certifications grouped by category for readable display (e.g. Cloud)."""
+
+    category: str = Field(description="Group label, e.g. 'Cloud Certifications'")
+    items: List[str] = Field(default_factory=list, description="Certification names in this group")
+
+
 class MasterResume(BaseModel):
     """Single source of truth master resume."""
 
@@ -82,4 +89,8 @@ class MasterResume(BaseModel):
     projects: List[ProjectItem] = Field(default_factory=list, description="Highlighted technical projects")
     education: List[EducationItem] = Field(default_factory=list, description="Educational background")
     certifications: List[str] = Field(default_factory=list, description="Certifications and licenses")
+    certification_groups: List[CertificationGroup] = Field(
+        default_factory=list,
+        description="Certifications grouped by category for display (populated at parse time)",
+    )
 

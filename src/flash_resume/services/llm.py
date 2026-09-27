@@ -81,6 +81,27 @@ Output ONLY valid JSON matching the MasterResume schema.
 """
 
 
+PARSE_RESUME_INSTRUCTION = """You are Flash Resume's Expert Resume Ingestion Engine.
+Convert the candidate's resume text into the exact MasterResume structured schema.
+Preserve 100% of the candidate's real metrics, dates, companies, bullet points, and skills.
+Assign clean IDs like 'exp_1', 'exp_2' to experience items and 'proj_1', 'proj_2' to projects.
+
+TEXT CLEANING RULES:
+- Remove stray/garbled formatting symbols and decorative characters (e.g. currency symbols
+  like $, emoji, control characters, zero-width or Unicode thin/fraction spaces, oversized
+  bullet glyphs). Convert smart/curly quotes and apostrophes to straight ones.
+- KEEP all letters, digits, whitespace, and meaningful punctuation that is part of real
+  content: C++, C#, .NET, Node.js, percentages (%), decimals (8.56), hyphens in names,
+  ampersands (R&D). If a symbol attaches to a number (e.g. '$5M'), keep the number and drop
+  the symbol ('5M').
+- Group every certification by category into 'certification_groups' (e.g. Cloud
+  Certifications, DevOps, Data, License), while also listing every certification in the flat
+  'certifications' array.
+
+Output ONLY valid JSON matching the MasterResume schema.
+"""
+
+
 class LLMService:
     """Service wrapping Google Gemini Flash for structured resume tailoring."""
 
@@ -224,19 +245,12 @@ Analyze the Job Description, extract core technical keywords, and generate a sur
 
     def parse_resume_from_text(self, raw_text: str) -> MasterResume:
         """Parse raw resume text (from PDF or text) into a structured MasterResume."""
-        parse_instruction = (
-            "You are Flash Resume's Expert Resume Ingestion Engine. "
-            "Convert the candidate's resume text into the exact MasterResume structured schema. "
-            "Preserve 100% of the candidate's real metrics, dates, companies, bullet points, and skills. "
-            "Assign clean IDs like 'exp_1', 'exp_2' to experience items and 'proj_1', 'proj_2' to projects."
-        )
-
         prompt = f"CANDIDATE RAW RESUME TEXT:\n\n{raw_text}\n\nParse into MasterResume schema."
         response = self.client.models.generate_content(
             model=self.model,
             contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction=parse_instruction,
+                system_instruction=PARSE_RESUME_INSTRUCTION,
                 response_mime_type="application/json",
                 response_schema=MasterResume,
                 temperature=0.1,

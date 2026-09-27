@@ -29,6 +29,43 @@ from flash_resume.utils.diff import display_tailor_summary
 
 console = Console()
 
+
+def _normalize_path(raw: str) -> Path:
+    """Clean a user-supplied path and resolve it to an absolute path.
+
+    Strips surrounding whitespace/quotes (including the curly smart-quotes
+    Windows documents paste), expands ``~``, and resolves relative paths so
+    ingestion works regardless of how the user typed it.
+    """
+    clean = raw.strip()
+    for curly, straight in (("‘", "'"), ("’", "'"), ("“", '"'), ("”", '"')):
+        clean = clean.replace(curly, straight)
+    clean = clean.strip("\"' ")
+    return Path(clean).expanduser().resolve()
+
+
+def _build_llm_service(cfg: AppConfig):
+    """Build the parse/tailor LLM service for the active provider.
+
+    Returns ``(service, provider_label)`` and raises ``ValueError`` when the
+    active provider's API key is missing. Previously this flow hardcoded the
+    Gemini key, so Groq-configured users could never import a resume.
+    """
+    if cfg.llm_provider == "groq":
+        from flash_resume.services.groq_llm import GroqLLMService
+
+        api_key = cfg.resolve_groq_api_key()
+        if not api_key:
+            raise ValueError("GROQ_API_KEY is not set.")
+        return GroqLLMService(api_key=api_key, model=cfg.groq_model), "Groq"
+    from flash_resume.services.llm import LLMService
+
+    api_key = cfg.resolve_api_key()
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY is not set.")
+    return LLMService(api_key=api_key, model=cfg.default_model), "Gemini"
+
+
 app = typer.Typer(
     name="fs",
     help="Fast, ATS-focused resume tailoring and 1-page PDF generation.",
@@ -104,22 +141,25 @@ def init_cmd() -> None:
 
     if choice == "1":
         file_input = Prompt.ask("Enter path to your resume file (.pdf, .txt, .md)")
-        source_path = Path(file_input.strip("\"'"))
+        source_path = _normalize_path(file_input)
         if not source_path.exists():
             console.print(f"[bold red]File not found at {source_path}. Using starter template instead.[/bold red]")
             if repo_example.exists():
                 default_resume_dir.write_text(repo_example.read_text(encoding="utf-8"), encoding="utf-8")
         else:
-            api_key = cfg.resolve_api_key()
-            if not api_key:
-                console.print("[yellow]Warning: GEMINI_API_KEY not found. Storing raw path; run 'fs import' once key is set.[/yellow]")
-                resume_path_str = str(source_path)
+            try:
+                llm, provider = _build_llm_service(cfg)
+            except ValueError as exc:
+                # Never write a raw PDF path as the master resume — that breaks
+                # doctor/tailor. Tell the user and use the starter instead.
+                console.print(f"[bold red]{exc}[/bold red]")
+                console.print("[yellow]Using the starter template; re-run with your API key set once you can import, or use 'fs import' later.[/yellow]")
+                if repo_example.exists():
+                    default_resume_dir.write_text(repo_example.read_text(encoding="utf-8"), encoding="utf-8")
             else:
-                from flash_resume.services.llm import LLMService
                 from flash_resume.services.parser import convert_resume_file_to_master
 
-                llm = LLMService(api_key=api_key, model=cfg.default_model)
-                with console.status(f"[bold cyan]Parsing {source_path.name} with Gemini Flash into structured Master Resume...[/bold cyan]", spinner="dots"):
+                with console.status(f"[bold cyan]Parsing {source_path.name} with {provider} into structured Master Resume...[/bold cyan]", spinner="dots"):
                     try:
                         parsed_resume = convert_resume_file_to_master(source_path, llm)
                         default_resume_dir.write_text(parsed_resume.model_dump_json(indent=2), encoding="utf-8")
@@ -141,7 +181,7 @@ def init_cmd() -> None:
 
     else:
         custom_path = Prompt.ask("Enter path to your master_resume.json")
-        resume_path_str = str(Path(custom_path.strip("\"'")).resolve())
+        resume_path_str = str(_normalize_path(custom_path))
 
     # Step 3: Output Directory
     console.print("\n[bold]Step 3: Output Directory[/bold]")
@@ -180,22 +220,21 @@ def import_cmd(
 ) -> None:
     """Import and parse your existing resume file into your master resume with AI."""
     cfg = load_config()
-    source_p = Path(file_path.strip("\"'"))
+    source_p = _normalize_path(file_path)
     if not source_p.exists():
         console.print(f"[bold red]File not found: {source_p}[/bold red]")
         raise typer.Exit(code=1)
 
-    api_key = cfg.resolve_api_key()
-    if not api_key:
-        console.print("[bold red]GEMINI_API_KEY is not set.[/bold red]")
-        console.print("Set GEMINI_API_KEY environment variable or run 'fs init' first.")
+    try:
+        llm, provider = _build_llm_service(cfg)
+    except ValueError as exc:
+        console.print(f"[bold red]{exc}[/bold red]")
+        console.print("Run 'fs init' first to configure your API key.")
         raise typer.Exit(code=1)
 
-    from flash_resume.services.llm import LLMService
     from flash_resume.services.parser import convert_resume_file_to_master
 
-    llm = LLMService(api_key=api_key, model=cfg.default_model)
-    with console.status(f"[bold cyan]Parsing {source_p.name} with Gemini Flash...[/bold cyan]", spinner="dots"):
+    with console.status(f"[bold cyan]Parsing {source_p.name} with {provider}...[/bold cyan]", spinner="dots"):
         try:
             parsed = convert_resume_file_to_master(source_p, llm)
         except Exception as e:

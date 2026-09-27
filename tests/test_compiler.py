@@ -91,3 +91,36 @@ def test_extract_overflow_returns_spilled_text(tmp_path: Path):
     assert spilled_words > 10
     assert len(spilled_text.split()) == spilled_words
 
+
+def test_grouped_certifications_compile_to_single_page(tmp_path: Path):
+    """certification_groups must render (grouped layout) without breaking."""
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    data = json.loads(example_path.read_text(encoding="utf-8"))
+    data["certification_groups"] = [
+        {"category": "Cloud Certifications", "items": data.get("certifications", [])}
+    ]
+    resume = MasterResume(**data)
+
+    compiler = CompilerService()
+    output_pdf = tmp_path / "grouped_certs.pdf"
+    pages, _ = compiler.compile(resume, output_pdf, max_pages=1)
+
+    assert output_pdf.exists()
+    assert pages == 1
+
+
+def test_flat_certifications_compile_as_bullets(tmp_path: Path):
+    """Without certification_groups the template falls back to bullet-listing
+    flat certifications (no pipe-join, no error)."""
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    data = json.loads(example_path.read_text(encoding="utf-8"))
+    data["certification_groups"] = []
+    resume = MasterResume(**data)
+
+    compiler = CompilerService()
+    output_pdf = tmp_path / "flat_certs.pdf"
+    pages, _ = compiler.compile(resume, output_pdf, max_pages=1)
+
+    assert output_pdf.exists()
+    assert pages == 1
+
