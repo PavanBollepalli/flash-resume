@@ -13,8 +13,9 @@ import pypdf
 
 from flash_resume.config import AppConfig
 from flash_resume.models.resume import MasterResume
-from flash_resume.models.tailoring import JDKeywords, TailorPlan, TailorResult
+from flash_resume.models.tailoring import JDKeywords, RequirementMatch, TailorPlan, TailorResult
 from flash_resume.services.compiler import CompilerService
+from flash_resume.services.evidence import coverage_score, coverage_terms, evaluate_requirements
 from flash_resume.services.llm import LLMService
 from flash_resume.services.validator import validate_bullet_length
 
@@ -85,10 +86,58 @@ def apply_tailor_plan(resume: MasterResume, plan: TailorPlan) -> MasterResume:
                         break
 
     # 3. Update Summary if provided
-    if plan.summary_edit and tailored.summary:
+    if plan.summary_edit:
         tailored.summary = plan.summary_edit
 
     return tailored
+
+
+def highlight_keywords(resume: MasterResume, keywords: list[str]) -> MasterResume:
+    """Wrap matched ATS keywords in ``**bold**`` markers for the PDF render pass.
+
+    The Typst template renders ``**…**`` spans in bold via its ``bold-markup``
+    helper so integrated keywords catch a recruiter's eye. Matching is
+    case-insensitive and whole-word; original casing is preserved. This is a
+    display-only pass — run it after trimming/JSON save so structured output
+    stays marker-free.
+    """
+    highlighted = copy.deepcopy(resume)
+    # Longest terms first so "Amazon Web Services" wins over "AWS" when both match.
+    terms = sorted({k.strip() for k in keywords if k and k.strip()}, key=len, reverse=True)
+    if not terms:
+        return highlighted
+    pattern = re.compile(
+        r"(?<!\w)(" + "|".join(re.escape(t) for t in terms) + r")(?!\w)",
+        re.IGNORECASE,
+    )
+
+    def wrap(text: str) -> str:
+        """Bold matched terms, coexisting with any ingest-time ``**`` markers.
+
+        Split the text at existing ``**`` boundaries and apply keyword bolding
+        only to the plain (even) segments — so JD terms get bolded in bullets
+        that already carry ingest-time bold, while existing spans are preserved
+        and never double-wrapped or corrupted.
+        """
+        if not text:
+            return text
+        if "**" not in text:
+            return pattern.sub(lambda m: f"**{m.group(0)}**", text)
+        segments = text.split("**")
+        for i in range(0, len(segments), 2):
+            if segments[i]:
+                segments[i] = pattern.sub(lambda m: f"**{m.group(0)}**", segments[i])
+        return "**".join(segments)
+
+    if highlighted.summary:
+        highlighted.summary = wrap(highlighted.summary)
+    for exp in highlighted.experience:
+        exp.bullets = [wrap(b) for b in exp.bullets]
+    for proj in highlighted.projects:
+        proj.bullets = [wrap(b) for b in proj.bullets]
+    for cat in highlighted.skills:
+        cat.items = [wrap(i) for i in cat.items]
+    return highlighted
 
 
 def build_evidence_map(
@@ -103,15 +152,22 @@ def build_evidence_map(
     novel JD keywords (e.g. LLVM, compilers) are honored. Otherwise the static
     list is used (offline / dry-run fallback).
     """
-    resume_text = resume.model_dump_json().casefold()
-    if jd_keywords:
-        candidates = jd_keywords.required_keywords + jd_keywords.preferred_keywords
-    else:
+    if not jd_keywords or not (jd_keywords.required_keywords or jd_keywords.preferred_keywords):
         jd_text = job_description.casefold()
-        candidates = [term for term in EVIDENCE_TERMS if term.casefold() in jd_text]
-    supported = [term for term in candidates if term.casefold() in resume_text]
-    unsupported = [term for term in candidates if term.casefold() not in resume_text]
-    return supported, unsupported
+        jd_keywords = JDKeywords(
+            required_keywords=[term for term in EVIDENCE_TERMS if term.casefold() in jd_text]
+        )
+    return coverage_terms(evaluate_requirements(resume, jd_keywords))
+
+
+def _apply_coverage(plan: TailorPlan, assessment: list[RequirementMatch]) -> TailorPlan:
+    """Attach deterministic evidence results to a model-generated plan."""
+    supported, unsupported = coverage_terms(assessment)
+    plan.requirement_matches = assessment
+    plan.matched_keywords = supported
+    plan.missing_keywords = unsupported
+    plan.ats_match_score = coverage_score(assessment)
+    return plan
 
 
 def sanitize_tailor_plan(
@@ -119,20 +175,22 @@ def sanitize_tailor_plan(
     resume: MasterResume,
     job_description: str,
     jd_keywords: Optional[JDKeywords] = None,
+    assessment: Optional[list[RequirementMatch]] = None,
 ) -> TailorPlan:
     """Remove unsupported model claims and edits that violate layout constraints."""
     sanitized = copy.deepcopy(plan)
-    supported_terms, unsupported_terms = build_evidence_map(
-        resume, job_description, jd_keywords
-    )
+    if assessment is None:
+        if not jd_keywords or not (jd_keywords.required_keywords or jd_keywords.preferred_keywords):
+            jd_text = job_description.casefold()
+            jd_keywords = JDKeywords(
+                required_keywords=[term for term in EVIDENCE_TERMS if term.casefold() in jd_text]
+            )
+        assessment = evaluate_requirements(resume, jd_keywords)
+    supported_terms, unsupported_terms = coverage_terms(assessment)
     supported_lookup = {term.casefold() for term in supported_terms}
     resume_text = resume.model_dump_json().casefold()
 
-    sanitized.matched_keywords = supported_terms
-    sanitized.missing_keywords = unsupported_terms
-    sanitized.ats_match_score = round(
-        len(supported_terms) / max(len(supported_terms) + len(unsupported_terms), 1) * 100
-    )
+    _apply_coverage(sanitized, assessment)
     for skill_update in sanitized.skill_updates:
         original_lookup = {original.casefold() for original in skill_update.original_items}
         skill_update.updated_items = [
@@ -168,17 +226,34 @@ def generate_diff_markdown(
     lines = [
         f"# Flash Resume ATS Tailoring Report: {plan.company} - {plan.role}",
         "",
-        f"- **JD Coverage:** {len(plan.matched_keywords)}/{len(plan.matched_keywords) + len(plan.missing_keywords)} supported requirements",
+        f"- **Evidence-based ATS Score:** {plan.ats_match_score}%",
+        f"- **Requirement Coverage:** {len([m for m in plan.requirement_matches if m.status == 'covered'])} covered, {len([m for m in plan.requirement_matches if m.status == 'partial'])} partial, {len(plan.missing_keywords)} unsupported ({len(plan.requirement_matches)} total)",
         f"- **Applied Bullet Edits:** {len(plan.bullet_edits)}",
         f"- **Page Count:** {page_count} (Verified Single-Page Fit)",
         f"- **Typst Compile Latency:** {compile_time_ms:.1f} ms",
-        f"- **Integrated Keywords:** {', '.join(plan.matched_keywords) if plan.matched_keywords else 'None'}",
+        f"- **Covered JD Requirements:** {', '.join(plan.matched_keywords) if plan.matched_keywords else 'None'}",
+        "- **Scoring:** required requirements weigh 1.0; preferred requirements weigh 0.35; partial evidence earns 50% of its weight.",
         "",
+        "## Requirement Evidence Matrix",
+        "",
+        "| Priority | JD Requirement | Status | Resume Evidence | Method |",
+        "| :--- | :--- | :--- | :--- | :--- |",
         "## Modified Bullet Points",
         "",
         "| Section | Original Bullet | Tailored Bullet (ATS Optimized) | Word Δ |",
         "| :--- | :--- | :--- | :--- |",
     ]
+
+    matrix_rows = []
+    for match in plan.requirement_matches:
+        evidence = "; ".join(match.evidence).replace("|", "\\|") if match.evidence else "—"
+        requirement = match.requirement.replace("|", "\\|")
+        matrix_rows.append(
+            f"| {match.priority} | {requirement} | {match.status} | {evidence} | {match.match_method} |"
+        )
+
+    modified_header_index = lines.index("## Modified Bullet Points")
+    lines[modified_header_index:modified_header_index] = matrix_rows + [""]
 
     for edit in plan.bullet_edits:
         orig_words = len(edit.original_text.split())
@@ -432,9 +507,15 @@ class TailorEngine:
         # 2. Call LLM #1 to extract ATS keywords, then LLM #2 for the plan.
         llm_started_at = time.perf_counter()
         jd_keywords = self.llm.extract_jd_keywords(job_description)
-        supported_terms, unsupported_terms = build_evidence_map(
-            master_resume, job_description, jd_keywords
-        )
+        # Evaluate existing evidence before the LLM plans edits. Coverage is
+        # independent from whether an edit is later selected.
+        if not (jd_keywords.required_keywords or jd_keywords.preferred_keywords):
+            fallback_terms = [
+                term for term in EVIDENCE_TERMS if term.casefold() in job_description.casefold()
+            ]
+            jd_keywords = JDKeywords(required_keywords=fallback_terms)
+        initial_assessment = evaluate_requirements(master_resume, jd_keywords)
+        supported_terms, unsupported_terms = coverage_terms(initial_assessment)
         plan = sanitize_tailor_plan(
             self.llm.generate_tailor_plan(
                 resume=master_resume,
@@ -448,6 +529,7 @@ class TailorEngine:
             master_resume,
             job_description,
             jd_keywords,
+            assessment=initial_assessment,
         )
         llm_time_ms = (time.perf_counter() - llm_started_at) * 1000
 
@@ -474,6 +556,27 @@ class TailorEngine:
             llm=self.llm,
             job_description=job_description,
         )
+
+        # Score the final, fitted resume rather than a plan or a pre-trim
+        # intermediate. This also records a complete evidence trace in the
+        # saved report.
+        _apply_coverage(plan, evaluate_requirements(tailored_resume, jd_keywords))
+
+        # 5b. Bold matched keywords in the PDF (display-only pass). The JSON
+        # saved below uses the marker-free resume. Bold adds a hair of width,
+        # so verify the page budget and fall back to plain render on overflow.
+        highlighted = highlight_keywords(tailored_resume, plan.matched_keywords)
+        hl_pages, hl_ms = self.compiler.compile(
+            highlighted, pdf_path, self.config.max_pages
+        )
+        compile_ms += hl_ms
+        if hl_pages > self.config.max_pages:
+            pages, fallback_ms = self.compiler.compile(
+                tailored_resume, pdf_path, self.config.max_pages
+            )
+            compile_ms += fallback_ms
+        else:
+            pages = hl_pages
 
         # 6. Save JSON & Diff Markdown (after trimming so JSON matches the PDF)
         json_path.write_text(tailored_resume.model_dump_json(indent=2), encoding="utf-8")

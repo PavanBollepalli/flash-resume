@@ -31,13 +31,22 @@ STRICT PRINCIPLES & CONSTRAINTS:
    - CHARACTER BUDGET: The replacement MUST NOT exceed the total character length of the original bullet by more than 15 characters (watch out for long words that cause extra line wraps).
    - Do NOT lengthen bullets. Do NOT add extra sentences or clauses that wrap onto new lines.
 3. SURGICAL MODIFICATION ONLY:
-    - Select 1 to 2 high-impact bullet points to rephrase using the JD's exact terminology.
+    - Select up to 3 to 4 high-impact bullet points to rephrase using the JD's exact terminology.
     - Do not rewrite a bullet merely to produce an edit. Only modify it when the change adds one or more high-priority JD keywords supported by the master resume and materially improves relevance.
     - Preserve relevant keywords already present in the original bullet. If a bullet already matches the JD adequately, return a BulletEdit with action 'skip'. Omitting that bullet edit is also valid.
    - Update Skills categories with supported exact terms.
-4. METADATA DETECTION:
+4. SUMMARY TAILORING (ALWAYS produce summary_edit):
+   - Rewrite the candidate's professional summary to mirror the JD's language.
+   - Weave in the top 2-3 matched keywords naturally (do NOT keyword-stuff).
+   - Keep it to 1-2 punchy sentences, 20-30 words maximum.
+   - Preserve the candidate's actual title/role and years of experience — never inflate.
+   - The summary_edit field MUST always be populated.
+5. METADATA DETECTION:
    - Infer the target company name and job title from the JD text if not provided.
-   - Estimate an ATS match score (0-100) reflecting keyword alignment.
+   - Do not estimate coverage: Flash Resume calculates the score locally from verified evidence.
+6. BOLD FORMATTING PRESERVATION:
+   - The master resume already contains restrained **bold** markers (placed at ingest time by the scanability rules below). Your ONLY bold-related job is to PRESERVE them: never strip, add, move, or re-balance markers. If you reword a bolded span, keep the same span bolded. If a marker lands awkwardly after your edit, drop that pair of markers — do not invent new ones.
+   - The resume should look naturally formatted, not ATS-stuffed.
 """
 
 
@@ -51,6 +60,13 @@ ATS system would scan for, so a resume can be tailored to match. Split them into
 2. preferred_keywords - nice-to-haves or 'preferred qualifications'.
 
 Only include terms that genuinely appear or are clearly implied in the JD.
+Keep one atomic requirement per item, preserving the JD's wording where
+possible. Do not split a coordinated quality phrase such as "clean,
+maintainable, and reusable code" into three separately scored requirements;
+emit it once. Do not split alternatives such as "LangChain, LangGraph, or a
+similar framework" into multiple mandatory requirements; preserve the
+alternative as one item. Keep Required Skills in required_keywords and Good to
+Have / Preferred Skills in preferred_keywords.
 Output ONLY valid JSON matching the JDKeywords schema.
 """
 
@@ -72,8 +88,12 @@ STRICT RULES:
 4. Keep the contact block byte-for-byte unchanged, and keep all real
    companies, roles, dates, and quantifiable metrics intact.
 5. Preserve ATS keywords already integrated by the tailoring pass.
-6. Return the complete MasterResume schema with the same field structure.
-7. When MEASURED OVERFLOW is provided, prioritize condensing exactly the
+6. PRESERVE existing **bold** markers: the resume may carry restrained **bold** spans
+   placed at ingest time for recruiter scannability. Keep them where the content they mark
+   survives; if you shorten or drop a bolded span, remove its markers cleanly. Do NOT add
+   new bold markers during condensation.
+7. Return the complete MasterResume schema with the same field structure.
+8. When MEASURED OVERFLOW is provided, prioritize condensing exactly the
    spilled content shown and hit the stated word-reclamation target rather
    than rewriting the whole resume from scratch.
 
@@ -107,6 +127,32 @@ HYPERLINK RULES:
   project/demo/repo URLs -> the matching project's github or live_url.
 - Use "[EMAIL FROM HYPERLINK: ...]" as contact.email when the visible text does not clearly
   show an email.
+
+BOLD FORMATTING RULES (for recruiter scannability — apply during this parse):
+- Add restrained Markdown-style **bold** markers to the summary and to experience/project
+  bullet fields ONLY. Do NOT rewrite, remove, add, reorder, or paraphrase any wording —
+  this is formatting-only; change NOTHING else.
+- Bold these categories when they appear:
+  1. Core skills directly relevant to the target role (e.g. Python, FastAPI, REST APIs,
+     RAG/RAG Pipelines, LLM, Generative AI, PostgreSQL, pgvector, Docker, AWS,
+     Google Cloud, Git, SQL, MySQL).
+  2. Strong engineering concepts / differentiators that are central to the achievement
+     (e.g. HNSW, vector search, hybrid search, caching, concurrent processing,
+     API integrations, unit tests, CI/CD, performance optimization, locking/concurrency control).
+     Do NOT bold every technical term — only bold a term when it is an important part of
+     the accomplishment.
+  3. Quantifiable results and measurable outcomes (e.g. 95% reduction, 0.48s, 25%, 1 DB
+     round-trip, 13 concurrent web fetches, 1st place, 200+ participants).
+  4. The specific result/capability that makes a bullet valuable.
+- Do NOT bold: entire sentences, entire bullet points, every technology, generic verbs
+  (built, developed, implemented, worked, used, created), soft skills (communication,
+  teamwork, problem-solving), common words (production, application, project, system,
+  experience), dates, company names, college names, locations, or incidental technologies.
+- Aim for roughly 2-5 bold elements per bullet, creating a skim path of:
+  technology used -> what was built -> measurable result. Keep it restrained — if
+  everything is bold, nothing is emphasized.
+- Only bold skills actually present in the resume. Never add or bold skills that are absent.
+- Markers must be correctly paired (`**` opens and closes each bold span).
 
 Output ONLY valid JSON matching the MasterResume schema.
 """

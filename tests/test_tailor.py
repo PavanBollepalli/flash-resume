@@ -10,8 +10,10 @@ from flash_resume.services.tailor import (
     apply_tailor_plan,
     build_evidence_map,
     generate_diff_markdown,
+    highlight_keywords,
     sanitize_tailor_plan,
 )
+from flash_resume.services.evidence import coverage_score, evaluate_requirements
 from flash_resume.services.validator import validate_bullet_length
 
 
@@ -187,7 +189,8 @@ def test_generate_diff_markdown():
     )
 
     assert "Flash Resume ATS Tailoring Report: Google - Site Reliability Engineer" in diff_md
-    assert "**JD Coverage:** 2/2 supported requirements" in diff_md
+    assert "**Evidence-based ATS Score:** 88%" in diff_md
+    assert "## Requirement Evidence Matrix" in diff_md
     assert "Kubernetes" in diff_md
     assert "64.2 ms" in diff_md
 
@@ -245,4 +248,88 @@ def test_sanitize_tailor_plan_uses_llm_keywords_as_evidence_gate():
     assert [e.replacement_text for e in sanitized.bullet_edits][0].endswith(" Django")
     # LLVM stays flagged as a missing keyword rather than being silently dropped.
     assert "LLVM" in sanitized.missing_keywords
+
+
+def test_evidence_matcher_recognizes_resume_equivalents():
+    """Coverage must be based on real evidence, not only copied JD wording."""
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    data = json.loads(example_path.read_text(encoding="utf-8"))
+    data["skills"].append({"category": "Databases", "items": ["PostgreSQL", "pgvector"]})
+    data["experience"][0]["bullets"] += [
+        "Authored reusable Python modules with docstrings and unit tests.",
+        "Reduced SQL query execution time by 25% through composite indexing.",
+    ]
+    data["projects"][0]["bullets"].append(
+        "Built a RAG retrieval pipeline with hybrid vector search and API integrations."
+    )
+    resume = MasterResume(**data)
+    keywords = JDKeywords(required_keywords=[
+        "testing", "reusable code", "maintainable code", "SQL databases",
+        "vector databases", "performance optimization", "AI workflows", "API integrations",
+    ])
+
+    assessment = evaluate_requirements(resume, keywords)
+    by_requirement = {item.requirement: item for item in assessment}
+
+    assert by_requirement["testing"].status == "covered"
+    assert by_requirement["reusable code"].status == "covered"
+    assert by_requirement["maintainable code"].status == "covered"
+    assert by_requirement["SQL databases"].status == "covered"
+    assert by_requirement["vector databases"].status == "covered"
+    assert by_requirement["performance optimization"].status == "covered"
+    assert by_requirement["AI workflows"].status == "covered"
+    assert by_requirement["API integrations"].status == "covered"
+    assert all(item.evidence and item.evidence_locations for item in assessment)
+
+
+def test_evidence_score_weights_preferred_and_partial_requirements():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    data = json.loads(example_path.read_text(encoding="utf-8"))
+    data["skills"].append({"category": "Cloud", "items": ["AWS", "Docker", "GitHub Actions"]})
+    resume = MasterResume(**data)
+    assessment = evaluate_requirements(
+        resume,
+        JDKeywords(
+            required_keywords=["Python", "cloud deployment"],
+            preferred_keywords=["LangGraph"],
+        ),
+    )
+    by_requirement = {item.requirement: item for item in assessment}
+
+    assert by_requirement["Python"].status == "covered"
+    assert by_requirement["cloud deployment"].status == "partial"
+    assert by_requirement["LangGraph"].status == "unsupported"
+    # (1.0 + 0.5) / (1.0 + 1.0 + 0.35) = 63.8%, rounded to 64.
+    assert coverage_score(assessment) == 64
+
+
+def test_highlight_keywords_merges_with_ingest_bold_markers():
+    """JD-keyword bolding must coexist with ingest-time **bold** markers.
+
+    A bullet that already carries ingest-time bold (e.g. ``**RAG pipeline**``)
+    must still get JD-keyword bolding on its plain segments (FastAPI, Docker),
+    without nesting, corrupting, or dropping the existing markers.
+    """
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    data = json.loads(example_path.read_text(encoding="utf-8"))
+    data["experience"][0]["bullets"] = [
+        "Built a **RAG pipeline** with FastAPI and CI/CD, cutting latency by **95%**.",
+    ]
+    resume = MasterResume(**data)
+
+    highlighted = highlight_keywords(resume, ["FastAPI", "CI/CD", "Docker"])
+
+    bullet = highlighted.experience[0].bullets[0]
+    # Existing ingest markers preserved, unaltered.
+    assert "**RAG pipeline**" in bullet
+    assert "**95%**" in bullet
+    # JD keywords added into plain segments of the same bullet.
+    assert "**FastAPI**" in bullet
+    assert "**CI/CD**" in bullet
+    # No nested/dangling markers: split on '**' must leave even-length, paired spans.
+    segments = bullet.split("**")
+    assert len(segments) % 2 == 1  # ends with plain text, i.e. balanced pairs
+    for i in range(len(segments)):
+        assert "**" not in segments[i]  # no double-wrapped segments
+
 

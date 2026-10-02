@@ -1,252 +1,147 @@
-// Flash Resume - Intelligent Job Description Content Extractor + One-Tap FAB
+// content.js — Manifest V3 content script.
+// Injects the ⚡ sliver on EVERY page, always. No detection, no gates.
+// One tap extracts the JD (known selectors → selection → main content →
+// body) and POSTs it to the local companion daemon.
 
-// Base URL of the local companion server.
-const API_BASE = "http://127.0.0.1:13450";
+(() => {
+  console.log("[Flash Resume] content.js running on", location.hostname);
+  const API_BASE = "http://127.0.0.1:13450";
+  const FAB_ID = "fr-fab";
+  const TOAST_ID = "fr-toast";
+  const STYLE_ID = "fr-style";
 
-function extractJobDetails() {
-  const url = window.location.href;
-  let title = "";
-  let company = "";
-  let jd = "";
-
-  // 1. LinkedIn Job Page
-  if (url.includes("linkedin.com")) {
-    title = document.querySelector(
-      ".job-details-jobs-unified-top-card__job-title, .topcard__title, h1, [class*='job-title']"
-    )?.innerText?.trim() || "";
-    company = document.querySelector(
-      ".job-details-jobs-unified-top-card__company-name, .topcard__org-name-link, .jobs-unified-top-card__company-name, [class*='company-name']"
-    )?.innerText?.trim() || "";
-    jd = document.querySelector(
-      "#job-details, .jobs-description__content, .jobs-box__html-content, .description__text, .jobs-description__container, [class*='job-description']"
-    )?.innerText?.trim() || "";
-  }
-  // 2. Indeed Job Page
-  else if (url.includes("indeed.com")) {
-    title = document.querySelector(".jobsearch-JobInfoHeader-title, h1")?.innerText?.trim() || "";
-    company = document.querySelector("[data-company-name='true'], .jobsearch-InlineCompanyRating-companyHeader")?.innerText?.trim() || "";
-    jd = document.querySelector("#jobDescriptionText, .jobsearch-jobDescriptionText")?.innerText?.trim() || "";
-  }
-  // 3. Greenhouse / Lever
-  else if (url.includes("greenhouse.io") || url.includes("lever.co")) {
-    title = document.querySelector(".app-title, .posting-headline h2, h1")?.innerText?.trim() || "";
-    company = document.querySelector(".company-name, .main-header-logo, .posting-headline")?.innerText?.trim() || "";
-    jd = document.querySelector("#content, .section-wrapper, .posting-description, .job-description")?.innerText?.trim() || "";
-  }
-
-  // Fallbacks: If user highlighted text, use the selection
-  const selectedText = window.getSelection().toString().trim();
-  if (selectedText.length > 50) {
-    jd = selectedText;
-  }
-
-  // Generic fallback: grab the largest readable text block in a job-like
-  // container (cheap, bounded — no full-page scan that could freeze a busy SPA).
-  if (!jd) {
-    const sel = document.querySelector(
-      "article, main, .job-description, .jobDescriptionText, .description, #job-details, " +
-      "[class*='job-description'], [class*='job-posting'], [data-testid*='job']"
-    );
-    const t = (sel && sel.innerText || "").trim();
-    if (t.length > 120) jd = t;
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = `
+      /* Anchor the right edge (transform-origin: right center) so the button
+         grows leftward on hover and never moves out from under the cursor —
+         otherwise it flickers (expand → cursor leaves → collapse → loop). */
+      #${FAB_ID} {
+        position: fixed; bottom: 24px; right: 0; z-index: 2147483647;
+        width: 6px; height: 48px; border-radius: 3px 0 0 3px;
+        background: #3b82f6; border: none; cursor: pointer;
+        box-shadow: -2px 0 8px rgba(59,130,246,.35);
+        font-size: 0; color: #fff; display: flex; align-items: center; justify-content: center;
+        overflow: hidden; white-space: nowrap;
+        transform-origin: right center;
+        transition: width .22s ease, border-radius .22s ease, box-shadow .22s ease;
+        font-family: system-ui, sans-serif;
+      }
+      #${FAB_ID}:hover {
+        width: 52px; height: 52px; border-radius: 50%;
+        font-size: 22px;
+        box-shadow: 0 4px 14px rgba(59,130,246,.45);
+      }
+      #${FAB_ID}.fr-working { pointer-events: none; opacity: .6; animation: fr-pulse 1s infinite; }
+      @keyframes fr-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+      #${TOAST_ID} {
+        position: fixed; bottom: 90px; right: 24px; z-index: 2147483647;
+        background: #1e293b; color: #f1f5f9; padding: 12px 18px; border-radius: 10px;
+        font: 13px/1.5 system-ui, sans-serif; max-width: 340px;
+        box-shadow: 0 4px 16px rgba(0,0,0,.3); opacity: 0; transform: translateY(8px);
+        transition: opacity .25s, transform .25s; pointer-events: none;
+      }
+      #${TOAST_ID}.fr-show { opacity: 1; transform: translateY(0); }
+      #${TOAST_ID}.fr-error { background: #7f1d1d; }
+    `;
+    document.head.appendChild(style);
   }
 
-  return { title, company, jd };
-}
-
-// ---------------------------------------------------------------------------
-// One-Tap Floating Action Button (FAB)
-// A small ⚡ button docks in the bottom-right corner of job pages. Tapping it
-// extracts the JD, POSTs it to the local server, and shows a live progress /
-// result panel right on the page — one tap, no popup. Hosted in a closed
-// Shadow DOM so site CSS can't leak in and the FAB's own styles can't leak out.
-// ---------------------------------------------------------------------------
-const FAB_HOST_ID = "flash-resume-fab-host";
-
-// Renders the button + status panel state. `panelState` is one of:
-//   idle | busy | success | error
-// NOTE: `shadow` is the root returned by attachShadow({mode:"closed"}) — for a
-// closed shadow, host.shadowRoot is null even to the creator, so we must hold
-// and pass the shadow reference itself.
-function render(shadow, panelState) {
-  const btn = shadow.querySelector("#fabBtn");
-  const panel = shadow.querySelector("#fabPanel");
-  const spinner = shadow.querySelector("#panelSpinner");
-  if (!btn) return;
-
-  btn.dataset.state = panelState;
-  btn.disabled = panelState === "busy";
-  btn.textContent = panelState === "busy" ? "" : "";
-  if (panelState !== "busy") {
-    // Ensure SVG stays in place (textContent clears children)
-    const svg = shadow.getElementById("fabIcon");
-    if (!svg) {
-      const svgNS = "http://www.w3.org/2000/svg";
-      const s = document.createElementNS(svgNS, "svg");
-      s.id = "fabIcon";
-      s.setAttribute("viewBox", "0 0 24 24");
-      s.setAttribute("fill", "none");
-      s.setAttribute("stroke", "white");
-      s.setAttribute("stroke-width", "1.5");
-      s.setAttribute("stroke-linecap", "round");
-      s.setAttribute("stroke-linejoin", "round");
-      const path = document.createElementNS(svgNS, "path");
-      path.setAttribute("d", "M13 2L3 14h9l-1 8 10-12h-9l1-8z");
-      s.appendChild(path);
-      btn.appendChild(s);
+  function showToast(msg, isError = false) {
+    let toast = document.getElementById(TOAST_ID);
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = TOAST_ID;
+      document.body.appendChild(toast);
     }
-  } else {
-    // Clear the SVG during busy state
-    const svg = shadow.getElementById("fabIcon");
-    if (svg) svg.remove();
+    toast.className = isError ? "fr-error" : "";
+    toast.textContent = msg;
+    requestAnimationFrame(() => toast.classList.add("fr-show"));
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => toast.classList.remove("fr-show"), 6000);
   }
-  btn.classList.toggle("busy", panelState === "busy");
 
-  // Only the little title spinner rotates — never the body text.
-  if (spinner) spinner.style.display = panelState === "busy" ? "inline-block" : "none";
+  // JD extraction with a deep fallback chain so it works on any website:
+  // known board selectors → selection → article/main → bounded body text.
+  function extractJobDescription() {
+    const known = document.querySelector(
+      // LinkedIn / Indeed / Greenhouse / Lever
+      ".jobs-description__content, .show-more-less-html__markup, .description__text, " +
+      "#jobDescriptionText, .jobsearch-JobComponent-description, .app_body, #job_app, " +
+      ".posting-description, [itemprop='description'], " +
+      // Generic ATS markup (Workday, iCIMS, SmartRecruiters, Ashby, custom…)
+      "[class*='job-description'], [class*='jobDescription'], " +
+      "[class*='posting-description'], [id*='jobDescription'], [id*='job-description']"
+    );
+    if (known && known.innerText.trim().length > 80) return known.innerText;
 
-  if (!panel) return;
-  panel.classList.toggle("open", panelState !== "idle");
-  panel.dataset.state = panelState;
-}
+    const sel = window.getSelection()?.toString().trim();
+    if (sel && sel.length > 80) return sel;
 
-function injectFab() {
-  if (document.getElementById(FAB_HOST_ID)) return;
+    const main = document.querySelector("article, main, [role='main']");
+    if (main && main.innerText.trim().length > 200) return main.innerText.slice(0, 12000);
 
-  const host = document.createElement("div");
-  host.id = FAB_HOST_ID;
-  const shadow = host.attachShadow({ mode: "closed" });
-  shadow.innerHTML = `
-    <style>
-      :host { all: initial; }
-      * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-      .wrap { position: fixed; right: 18px; bottom: 18px; z-index: 2147483647; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
-      #fabPanel {
-        max-width: 340px; min-width: 240px; padding: 14px 16px; border-radius: 14px;
-        background: rgba(8, 36, 50, 0.96); color: #e7f1f8; font-size: 13px; line-height: 1.5;
-        box-shadow: 0 12px 34px rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08);
-        backdrop-filter: blur(10px); opacity: 0; transform: translateY(8px) scale(0.98);
-        transition: opacity .18s ease, transform .18s ease; pointer-events: none;
-      }
-      #fabPanel.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-      #fabPanel[data-state="busy"] { border-color: rgba(66, 122, 161, 0.55); }
-      #fabPanel[data-state="success"] { border-color: rgba(103, 148, 54, 0.55); }
-      #fabPanel[data-state="error"] { border-color: rgba(193, 68, 60, 0.55); }
-      .panel-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; margin-bottom: 6px; }
-      #fabPanel[data-state="busy"] .panel-title { color: #8fc1e0; }
-      #fabPanel[data-state="success"] .panel-title { color: #a3d67c; }
-      #fabPanel[data-state="error"] .panel-title { color: #e2857c; }
-      #fabPanelBody { color: #c7dbe6; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
-      #fabPanelBody .path { color: #93b0c1; font-size: 11.5px; }
-      .spinner {
-        width: 14px; height: 14px; flex: none; border-radius: 50%;
-        border: 2px solid rgba(66,122,161,0.35); border-top-color: #8fc1e0;
-        animation: frspin .7s linear infinite;
-      }
-      @keyframes frspin { to { transform: rotate(360deg); } }
-      .close { margin-left: auto; background: none; border: none; color: #93b0c1; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
-      .close:hover { color: #fff; }
-      #fabBtn {
-        width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
-        background: linear-gradient(135deg, #05668D, #427AA1); color: #fff; font-size: 22px; line-height: 1;
-        box-shadow: 0 6px 18px rgba(5, 102, 141, 0.5); display: flex; align-items: center; justify-content: center;
-        transition: transform .15s ease, box-shadow .15s ease;
-      }
-      #fabBtn:hover { transform: scale(1.06); box-shadow: 0 8px 24px rgba(5, 102, 141, 0.6); }
-      #fabBtn:disabled { opacity: .8; cursor: wait; }
-      #fabBtn svg { width: 26px; height: 26px; display: block; pointer-events: none; }
-      #fabBtn.busy svg { display: none; }
-      #fabBtn.busy::before { content: ""; width: 20px; height: 20px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.35); border-top-color: #fff; animation: frspin .7s linear infinite; }
-    </style>
-    <div class="wrap">
-      <div id="fabPanel" data-state="idle">
-        <div class="panel-title">
-          <span id="panelSpinner" class="spinner" style="display:none"></span>
-          <span id="fabPanelTitle">Flash Resume</span>
-          <button class="close" id="fabClose" title="Dismiss">✕</button>
-        </div>
-        <div id="fabPanelBody"></div>
-      </div>
-      <button id="fabBtn" title="Flash Resume: tailor for this job"><svg id="fabIcon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></button>
-    </div>
-  `;
-  document.body.appendChild(host);
+    return document.body.innerText.slice(0, 12000);
+  }
 
-  const btn = shadow.getElementById("fabBtn");
-  const panelBody = shadow.getElementById("fabPanelBody");
-  const panelTitle = shadow.getElementById("fabPanelTitle");
-  const close = shadow.getElementById("fabClose");
+  function inferCompanyRole() {
+    let company = "", role = "";
+    company =
+      document.querySelector(".jobs-unified-top-link__company-name, .topcard__org-name-link, [data-testid='inlineHeader-companyName'], .company-name, h1.company")?.innerText.trim() || "";
+    role =
+      document.querySelector(".jobs-unified-top-link__job-title, .topcard__title, h1.t-24, #jobsearch-JobInfoHeader-title, .app-title, h1.title")?.innerText.trim() || "";
+    return { company, role };
+  }
 
-  close.addEventListener("click", () => render(shadow, "idle"));
-
-  btn.addEventListener("click", async () => {
-    if (btn.dataset.state === "busy") return;
-    const details = extractJobDetails();
-    if (!details.jd) {
-      panelTitle.textContent = "No job description found";
-      panelBody.textContent = "Select the job description text on the page and tap ⚡ again.";
-      render(shadow, "error");
+  async function tailor() {
+    const jd = extractJobDescription();
+    if (!jd || jd.trim().length < 80) {
+      showToast("⚠️ No job text found on this page. Select the JD and tap ⚡ again.", true);
       return;
     }
-    // Kick off: loud progress so the tap always visibly does something.
-    panelTitle.textContent = "Tailoring your resume…";
-    panelBody.textContent = "Detected: " + (details.title || "the job") + " @ " + (details.company || "the company");
-    render(shadow, "busy");
+    const { company, role } = inferCompanyRole();
+    const fab = document.getElementById(FAB_ID);
+    fab?.classList.add("fr-working");
+    showToast("⚡ Tailoring resume…");
 
-    const start = performance.now();
     try {
-      const resp = await fetch(`${API_BASE}/api/tailor`, {
+      const res = await fetch(`${API_BASE}/api/tailor`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jd: details.jd,
-          company: details.company || undefined,
-          role: details.title || undefined,
-        }),
+        body: JSON.stringify({ jd, company: company || null, role: role || null }),
       });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.detail || "Tailoring failed");
+      const data = await res.json();
+      if (!res.ok || data.error || data.success === false) {
+        showToast(`❌ ${data.error || data.detail || "Tailoring failed — is 'fs serve' running?"}`, true);
+        return;
       }
-      const result = await resp.json();
-      const secs = ((performance.now() - start) / 1000).toFixed(1);
-      panelTitle.textContent = `✅ ${result.ats_match_score}/100 ATS · ${result.page_count} page`;
-      panelBody.textContent = `Took ${secs}s — saved to:\n${result.pdf_path}`;
-      render(shadow, "success");
-    } catch (e) {
-      panelTitle.textContent = "Tailoring failed";
-      panelBody.textContent = `Flash Resume: ${e.message}\nIs the engine running? (Start it with "fs serve")`;
-      render(shadow, "error");
-    }
-  });
-}
-
-function initFab() {
-  chrome.storage.local.get("fr_fab", (data) => {
-    if (data.fr_fab === false) return;
-    const maybeInit = () => {
-      if (!document.body) { setTimeout(maybeInit, 300); return; }
-      injectFab();
-    };
-    maybeInit();
-  });
-}
-
-// Listen for messages from popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "extract_job") {
-    const details = extractJobDetails();
-    sendResponse(details);
-  }
-  if (request.action === "toggle_fab") {
-    chrome.storage.local.set({ fr_fab: request.enabled });
-    if (request.enabled) {
-      injectFab();
-    } else {
-      document.getElementById(FAB_HOST_ID)?.remove();
+      const score = data.ats_match_score ?? "?";
+      const pages = data.page_count ?? 1;
+      showToast(`✅ ATS ${score}% · ${pages} page${pages > 1 ? "s" : ""} · Saved: ${data.pdf_path || "PDF ready"}`);
+    } catch (err) {
+      showToast(`❌ Can't reach the local engine. Run 'fs serve' or restart via 'fs autostart enable'.`, true);
+    } finally {
+      fab?.classList.remove("fr-working");
     }
   }
-  return true;
-});
 
-initFab();
+  function createFab() {
+    if (document.getElementById(FAB_ID)) return;
+    injectStyles();
+    const btn = document.createElement("button");
+    btn.id = FAB_ID;
+    btn.textContent = "⚡";
+    btn.title = "Flash Resume — Tailor resume to this job";
+    btn.addEventListener("click", tailor);
+    document.body.appendChild(btn);
+  }
+
+  // Always visible, everywhere — no detection, no gates.
+  const tryInject = () => {
+    if (document.body) createFab();
+    else setTimeout(tryInject, 200);
+  };
+  tryInject();
+})();

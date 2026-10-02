@@ -31,6 +31,28 @@ class SkillUpdate(BaseModel):
     added_keywords: List[str] = Field(default_factory=list, description="Keywords added to this category")
 
 
+class RequirementMatch(BaseModel):
+    """Auditable evidence assessment for one JD requirement."""
+
+    requirement: str = Field(description="Requirement as extracted from the JD")
+    normalized_requirement: str = Field(description="Canonical form used for matching")
+    priority: Literal["required", "preferred"] = Field(
+        default="required", description="JD priority retained from extraction"
+    )
+    status: Literal["covered", "partial", "unsupported"] = Field(
+        description="Coverage classification based on resume evidence"
+    )
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence: List[str] = Field(
+        default_factory=list, description="Exact resume fragments supporting the classification"
+    )
+    evidence_locations: List[str] = Field(
+        default_factory=list, description="Structured resume fields containing the evidence"
+    )
+    match_method: str = Field(description="exact, alias, evidence_rule, or none")
+    reason: str = Field(description="Human-readable explanation of the decision")
+
+
 class TailorPlan(BaseModel):
     """Structured ATS optimization plan produced by the tailoring engine."""
 
@@ -39,6 +61,10 @@ class TailorPlan(BaseModel):
     ats_match_score: int = Field(default=85, description="Estimated ATS keyword coverage score (0-100)")
     matched_keywords: List[str] = Field(default_factory=list, description="Keywords already present or integrated")
     missing_keywords: List[str] = Field(default_factory=list, description="Keywords found in JD but unsupported")
+    requirement_matches: List[RequirementMatch] = Field(
+        default_factory=list,
+        description="Auditable requirement-to-resume evidence matrix used for ATS coverage",
+    )
     skill_updates: List[SkillUpdate] = Field(default_factory=list, description="Skill section adjustments")
     bullet_edits: List[BulletEdit] = Field(default_factory=list, description="Targeted bullet point modifications")
     summary_edit: Optional[str] = Field(default=None, description="Optional tailored professional bio summary")

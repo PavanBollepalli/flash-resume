@@ -56,6 +56,10 @@
 #set par(justify: true, leading: line-spacing, spacing: para-spacing)
 #set block(spacing: para-spacing)
 
+// Hyperlinks (email, LinkedIn/GitHub/portfolio, project URLs) render as
+// underlined text so the reader can see they are clickable in the PDF.
+#show link: underline
+
 #let sectionTitle(title) = [
   #v(section-spacing)
   #text(size: font-size + 1.4pt, weight: "bold")[#upper(title)]
@@ -64,6 +68,19 @@
 ]
 
 #let sep = [ ~ ]
+
+// Resume fields arrive from JSON as strings, so Typst deliberately renders
+// their contents literally. Recognize paired Markdown-style **bold** markers
+// here instead of evaluating arbitrary markup from user/LLM-provided text.
+#let inline-text(value) = {
+  for (i, part) in value.split("**").enumerate() {
+    if calc.rem(i, 2) == 1 {
+      text(weight: "bold")[#part]
+    } else {
+      part
+    }
+  }
+}
 
 // ---------------------------- Header ----------------------------
 #align(center)[
@@ -89,7 +106,7 @@
 // ---------------------------- Summary ----------------------------
 #if resume.at("summary", default: none) != none and resume.summary != "" [
   #sectionTitle[Summary]
-  #text(size: font-size)[#resume.summary]
+  #text(size: font-size)[#inline-text(resume.summary)]
 ]
 
 // ---------------------------- Skills ----------------------------
@@ -100,7 +117,7 @@
     column-gutter: 0.6em,
     row-gutter: 0.45em,
     ..resume.skills.map(s => (
-      [*#s.category:*], [#s.items.join(", ")],
+      [*#s.category:*], [#inline-text(s.items.join(", "))],
     )).flatten()
   )
 ]
@@ -148,7 +165,7 @@
     #v(0.2em)
     #list(
       spacing: item-spacing,
-      ..exp.bullets.map(b => [#b])
+      ..exp.bullets.map(b => [#inline-text(b)])
     )
   ]
 ]
@@ -173,7 +190,7 @@
     )
     #list(
       spacing: item-spacing,
-      ..proj.bullets.map(b => [#b]),
+      ..proj.bullets.map(b => [#inline-text(b)]),
       ..if proj.at("technologies", default: ()).len() > 0 {
         ([*Tech Stack:* #proj.technologies.join(", ").] ,)
       } else { () }

@@ -124,3 +124,22 @@ def test_flat_certifications_compile_as_bullets(tmp_path: Path):
     assert output_pdf.exists()
     assert pages == 1
 
+
+def test_markdown_bold_markers_render_without_literal_asterisks(tmp_path: Path):
+    """Inline **markers** in resume content must render as styled text."""
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    data = json.loads(example_path.read_text(encoding="utf-8"))
+    data["summary"] = "Built **FastAPI** services for reliable **RAG pipelines**."
+    data["skills"][0]["items"] = ["**Python**", "SQL"]
+    data["experience"][0]["bullets"][0] = "Implemented **FastAPI** endpoints."
+    resume = MasterResume(**data)
+
+    output_pdf = tmp_path / "bold_markers.pdf"
+    pages, _ = CompilerService().compile(resume, output_pdf, max_pages=1)
+
+    assert pages == 1
+    text = pypdf.PdfReader(str(output_pdf)).pages[0].extract_text()
+    assert "**" not in text
+    assert "FastAPI" in text
+    assert "RAG pipelines" in text
+
