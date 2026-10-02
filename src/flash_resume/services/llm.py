@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Optional
 
 from google import genai
@@ -15,6 +16,19 @@ from flash_resume.models.tailoring import JDKeywords, TailorPlan
 
 
 logger = logging.getLogger("flash_resume.llm")
+
+
+def infer_target_role(job_description: str) -> str | None:
+    """Extract a simple target-role hint for the summary prompt."""
+    patterns = (
+        r"looking for\s+(?:a|an)\s+(?:motivated\s+)?([^\n.!?]+?)\s+to\s+join",
+        r"hiring\s+(?:a|an)\s+(?:motivated\s+)?([^\n.!?]+?)\s+to\s+join",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, job_description, re.IGNORECASE)
+        if match:
+            return match.group(1).strip(" :-")
+    return None
 
 
 TAILOR_SYSTEM_INSTRUCTION = """You are Flash Resume's Precision ATS Optimization Engine.
@@ -39,7 +53,12 @@ STRICT PRINCIPLES & CONSTRAINTS:
    - Rewrite the candidate's professional summary to mirror the JD's language.
    - Weave in the top 2-3 matched keywords naturally (do NOT keyword-stuff).
    - Keep it to 1-2 punchy sentences, 20-30 words maximum.
-   - Preserve the candidate's actual title/role and years of experience — never inflate.
+     - Preserve the candidate's actual title/role. Never infer or calculate years of
+         experience from dates, projects, open-source work, or graduation dates. Only
+         include a duration when the source resume explicitly states it.
+     - Never convert open-source work, academic projects, or project evidence into
+         "years of experience" or "years of production experience".
+    - Do not use empty seniority or hype words such as "seasoned", "veteran", "expert", "highly skilled", or "passionate".
    - The summary_edit field MUST always be populated.
 5. METADATA DETECTION:
    - Infer the target company name and job title from the JD text if not provided.
@@ -117,6 +136,24 @@ TEXT CLEANING RULES:
 - Group every certification by category into 'certification_groups' (e.g. Cloud
   Certifications, DevOps, Data, License), while also listing every certification in the flat
   'certifications' array.
+
+NO-PUFFERY / HONEST WRITING RULES:
+- Strip empty intensifiers and self-applied superlatives that add no evidence: 'seasoned',
+  'highly skilled', 'very skilled', 'extremely skilled', 'world-class', 'rockstar', 'ninja',
+  'guru', 'best-in-class', 'proven track record', 'passionate' (when empty, e.g. 'passionate
+  about coding') and similar filler. A fresh graduate must NOT read as a veteran.
+- Do NOT invent years of professional experience or inflate an internship/project history into
+  "N years of backend/frontend/full-stack experience." A student or fresh graduate (graduation
+  year 2024-2026) has internships, open-source contributions, and projects — NOT "years of
+  experience" unless their work history explicitly shows continuous full-time employment
+  spanning those years.
+- Do NOT soften or remove REAL, factual quantifiable outcomes (metrics, percents, precise
+  numbers). Only remove empty claims, not evidence.
+- Do NOT invent replacements — drop the filler cleanly so the sentence still reads
+  grammatically (e.g. 'Seasoned B.Tech AI & ML graduate' -> 'B.Tech AI & ML graduate',
+  '1-year backend experience' -> 'backend project experience').
+- Keep wording honest: if a title/role or years of experience is unknown or implied, do not
+  inflate it.
 
 HYPERLINK RULES:
 - The input may include a "[CLICKABLE HYPERLINKS FOUND IN THIS PDF]" section: URLs embedded
@@ -253,6 +290,7 @@ TARGET JOB DESCRIPTION:
 OVERRIDES:
 Company: {company_override or "Infer from Job Description"}
 Role: {role_override or "Infer from Job Description"}
+    Target role for summary: {role_override or infer_target_role(job_description) or "Infer from Job Description"}
 """
 
         if jd_keywords and (jd_keywords.required_keywords or jd_keywords.preferred_keywords):

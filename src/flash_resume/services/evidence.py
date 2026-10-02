@@ -80,8 +80,8 @@ def resume_evidence(resume: MasterResume) -> list[EvidenceItem]:
             evidence.append(EvidenceItem(location, text))
 
     add("summary", resume.summary)
-    for index, highlight in enumerate(resume.highlights):
-        add(f"highlights[{index}]", highlight)
+    for index, award in enumerate(resume.awards):
+        add(f"awards[{index}]", award)
     for category in resume.skills:
         for index, item in enumerate(category.items):
             add(f"skills.{category.category}[{index}]", item)

@@ -49,7 +49,6 @@ class ProjectItem(BaseModel):
     start_date: Optional[str] = Field(default=None, description="Start date, e.g. 'Jan 2025'")
     end_date: Optional[str] = Field(default=None, description="End date or 'Present'")
     technologies: List[str] = Field(default_factory=list, description="Key tech stack tools used")
-    link: Optional[str] = Field(default=None, description="GitHub link or live deployment URL")
     github: Optional[str] = Field(default=None, description="GitHub repository URL")
     live_url: Optional[str] = Field(default=None, description="Live project or deployment URL")
     bullets: List[str] = Field(
@@ -82,7 +81,6 @@ class MasterResume(BaseModel):
 
     contact: ContactInfo
     summary: Optional[str] = Field(default=None, description="Short targeted 2-3 line professional bio")
-    highlights: List[str] = Field(default_factory=list, description="One or two quantified differentiators")
     awards: List[str] = Field(default_factory=list, description="Awards and notable achievements")
     skills: List[SkillCategory] = Field(default_factory=list, description="Categorized technical competencies")
     experience: List[ExperienceItem] = Field(default_factory=list, description="Chronological work history")

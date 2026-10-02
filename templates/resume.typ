@@ -85,6 +85,10 @@
 // ---------------------------- Header ----------------------------
 #align(center)[
   #text(size: font-size + 6.4pt, weight: "bold", tracking: 0.5pt)[#upper(contact-name)]
+  #if contact.at("title", default: none) != none and contact.title != "" [
+    #v(0.05em)
+    #text(size: font-size + 0.5pt)[#contact.title]
+  ]
   #v(0.15em)
   #text(size: font-size - 0.1pt)[
     #contact.at("location", default: "")#sep#contact.at("phone", default: "")
@@ -137,7 +141,7 @@
     #grid(
       columns: (1fr, auto),
       [
-        #edu.degree
+        #edu.degree#if edu.at("field_of_study", default: "") != "" [ --- #edu.field_of_study]
         #if edu.at("score_label", default: none) != none and edu.at("score_value", default: none) != none [
           --- #edu.score_label - #edu.score_value
         ] else if edu.at("gpa", default: none) != none [
@@ -146,6 +150,12 @@
       ],
       [#edu.at("location", default: "")],
     )
+    #if edu.at("highlights", default: ()).len() > 0 [
+      #list(
+        spacing: item-spacing,
+        ..edu.highlights.map(h => [#inline-text(h)])
+      )
+    ]
   ]
 ]
 
@@ -181,10 +191,10 @@
       [
         #if proj.at("github", default: none) != none and proj.github != "" [
           #link(proj.github)[GitHub]
-        ] else if proj.at("live_url", default: none) != none and proj.live_url != "" [
+          #if proj.at("live_url", default: none) != none and proj.live_url != "" [#h(0.4em)]
+        ]
+        #if proj.at("live_url", default: none) != none and proj.live_url != "" [
           #link(proj.live_url)[Live]
-        ] else if proj.at("link", default: none) != none and proj.link != "" [
-          #link(proj.link)[Link]
         ]
       ],
     )
@@ -219,7 +229,10 @@
 
 #if resume.at("awards", default: ()).len() > 0 [
   #sectionTitle[Awards]
-  #resume.awards.join("  |  ")
+  #list(
+    spacing: item-spacing,
+    ..resume.awards.map(a => [#inline-text(a)])
+  )
 ]
 
 // -----------------------------------------------------------------

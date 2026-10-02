@@ -143,3 +143,68 @@ def test_markdown_bold_markers_render_without_literal_asterisks(tmp_path: Path):
     assert "FastAPI" in text
     assert "RAG pipelines" in text
 
+
+def test_education_and_all_project_links_render(tmp_path: Path):
+    """Template must preserve fields that are present in the master resume."""
+    data = {
+        "contact": {
+            "name": "Test Candidate",
+            "title": "Software Engineer",
+            "email": "test@example.com",
+            "phone": "555-0100",
+            "location": "Remote",
+        },
+        "summary": "Summary",
+        "awards": ["Award-winning builder"],
+        "skills": [],
+        "experience": [],
+        "projects": [
+            {
+                "id": "project-1",
+                "name": "Project One",
+                "technologies": [],
+                "github": "https://github.com/example/project",
+                "live_url": "https://project.example.com",
+                "bullets": ["Built it."],
+            }
+        ],
+        "education": [
+            {
+                "institution": "Example University",
+                "degree": "Bachelor of Technology",
+                "field_of_study": "Computer Science",
+                "start_date": "2022",
+                "end_date": "2026",
+                "gpa": "8.5/10",
+                "highlights": ["Dean's List"],
+            }
+        ],
+        "certifications": [],
+    }
+
+    output_pdf = tmp_path / "all_fields.pdf"
+    pages, _ = CompilerService().compile(MasterResume(**data), output_pdf, max_pages=1)
+
+    assert pages == 1
+    text = pypdf.PdfReader(str(output_pdf)).pages[0].extract_text()
+    for expected in (
+        "Software Engineer",
+        "Award-winning builder",
+        "Computer Science",
+        "Dean's List",
+        "GitHub",
+        "Live",
+    ):
+        assert expected in text
+
+    annotations = pypdf.PdfReader(str(output_pdf)).pages[0].get("/Annots")
+    urls = {
+        annotation.get_object().get("/A").get("/URI")
+        for annotation in annotations
+        if not annotation.get_object().get("/A").get("/URI").startswith("mailto:")
+    }
+    assert urls == {
+        "https://github.com/example/project",
+        "https://project.example.com",
+    }
+
