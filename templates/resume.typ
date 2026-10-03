@@ -31,10 +31,10 @@
 // approved static file. compact/standard loosen progressively, same
 // density-fallback pattern as the rest of the pipeline.
 #let font-size = if density == "tight" { 9.6pt } else if density == "compact" { 10pt } else { 10.5pt }
-#let line-spacing = if density == "tight" { 0.42em } else if density == "compact" { 0.50em } else { 0.58em }
-#let section-spacing = if density == "tight" { 0.18em } else if density == "compact" { 0.30em } else { 0.42em }
-#let item-spacing = if density == "tight" { 0.38em } else if density == "compact" { 0.45em } else { 0.55em }
-#let para-spacing = if density == "tight" { 0.55em } else if density == "compact" { 0.65em } else { 0.75em }
+#let line-spacing = if density == "tight" { 0.45em } else if density == "compact" { 0.52em } else { 0.58em }
+#let section-spacing = if density == "tight" { 0.24em } else if density == "compact" { 0.45em } else { 0.42em }
+#let item-spacing = if density == "tight" { 0.42em } else if density == "compact" { 0.50em } else { 0.55em }
+#let para-spacing = if density == "tight" { 0.60em } else if density == "compact" { 0.70em } else { 0.75em }
 
 #let resume = json(data-path)
 #let contact = resume.at("contact", default: (:))
@@ -46,7 +46,7 @@
 )
 
 #let page-margin-v = if density == "tight" { 1.1cm } else if density == "compact" { 1.3cm } else { 1.5cm }
-#let page-margin-h = if density == "tight" { 1.5cm } else if density == "compact" { 1.7cm } else { 1.9cm }
+#let page-margin-h = if density == "tight" { 0.7cm } else if density == "compact" { 0.7cm } else { 0.9cm }
 
 #set page(
   margin: (top: page-margin-v, bottom: page-margin-v, left: page-margin-h, right: page-margin-h),

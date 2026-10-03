@@ -51,8 +51,8 @@ STRICT PRINCIPLES & CONSTRAINTS:
    - Update Skills categories with supported exact terms.
 4. SUMMARY TAILORING (ALWAYS produce summary_edit):
    - Rewrite the candidate's professional summary to mirror the JD's language.
-   - Weave in the top 2-3 matched keywords naturally (do NOT keyword-stuff).
-   - Keep it to 1-2 punchy sentences, 20-30 words maximum.
+   - Weave in the top 4-5 matched keywords naturally (do NOT keyword-stuff).
+   - Keep it to 3-4 punchy sentences, 60-70 words maximum.
      - Preserve the candidate's actual title/role. Never infer or calculate years of
          experience from dates, projects, open-source work, or graduation dates. Only
          include a duration when the source resume explicitly states it.
