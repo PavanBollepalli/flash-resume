@@ -61,7 +61,10 @@
 #show link: underline
 
 #let sectionTitle(title) = [
+  // Flexible spacing distributes only unused page height. It collapses when
+  // the content is already dense, so it cannot create overflow.
   #v(section-spacing)
+  #v(0.35fr)
   #text(size: font-size + 1.4pt, weight: "bold")[#upper(title)]
   #line(length: 100%, stroke: 0.6pt)
   #v(0.1em)

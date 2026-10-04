@@ -46,6 +46,29 @@ def sanitize_filename(name: str) -> str:
 def apply_tailor_plan(resume: MasterResume, plan: TailorPlan) -> MasterResume:
     """Apply structured edits from a TailorPlan onto a MasterResume clone."""
     tailored = copy.deepcopy(resume)
+    if plan.role and tailored.contact.title != plan.role:
+        tailored.contact.title = plan.role
+
+    if plan.preparation_skills:
+        category = next(
+            (
+                item
+                for item in tailored.skills
+                if item.category.strip().casefold() == "familiarity"
+            ),
+            None,
+        )
+        if category is None:
+            from flash_resume.models.resume import SkillCategory
+
+            category = SkillCategory(category="Familiarity", items=[])
+            tailored.skills.append(category)
+        existing = {item.casefold() for item in category.items}
+        for skill in plan.preparation_skills:
+            label = f"{skill.strip()} (familiarity)"
+            if skill.strip() and label.casefold() not in existing:
+                category.items.append(label)
+                existing.add(label.casefold())
 
     # 1. Update Skills
     for skill_up in plan.skill_updates:
@@ -176,6 +199,7 @@ def sanitize_tailor_plan(
     job_description: str,
     jd_keywords: Optional[JDKeywords] = None,
     assessment: Optional[list[RequirementMatch]] = None,
+    interview_mode: bool = False,
 ) -> TailorPlan:
     """Remove unsupported model claims and edits that violate layout constraints."""
     sanitized = copy.deepcopy(plan)
@@ -189,6 +213,15 @@ def sanitize_tailor_plan(
     supported_terms, unsupported_terms = coverage_terms(assessment)
     supported_lookup = {term.casefold() for term in supported_terms}
     resume_text = resume.model_dump_json().casefold()
+    unsupported_lookup = {term.casefold(): term for term in unsupported_terms}
+    if interview_mode:
+        sanitized.preparation_skills = [
+            unsupported_lookup[term.casefold()]
+            for term in sanitized.preparation_skills
+            if term.casefold() in unsupported_lookup
+        ][:5]
+    else:
+        sanitized.preparation_skills = []
 
     _apply_coverage(sanitized, assessment)
     for skill_update in sanitized.skill_updates:
@@ -269,6 +302,12 @@ def generate_diff_markdown(
         "## Skills Adjustments",
         "",
     ])
+
+    if plan.preparation_skills:
+        lines.append(
+            "- **Familiarity (not current production experience):** "
+            + ", ".join(plan.preparation_skills)
+        )
 
     for skill_up in plan.skill_updates:
         if skill_up.added_keywords:
@@ -486,6 +525,7 @@ class TailorEngine:
         company_override: Optional[str] = None,
         role_override: Optional[str] = None,
         output_dir_override: Optional[str] = None,
+        interview_mode: bool = False,
     ) -> TailorResult:
         """Run the end-to-end tailoring and compilation pipeline."""
         started_at = time.perf_counter()
@@ -525,11 +565,13 @@ class TailorEngine:
                 jd_keywords=jd_keywords,
                 supported_terms=supported_terms,
                 unsupported_terms=unsupported_terms,
+                interview_mode=interview_mode,
             ),
             master_resume,
             job_description,
             jd_keywords,
             assessment=initial_assessment,
+            interview_mode=interview_mode,
         )
         llm_time_ms = (time.perf_counter() - llm_started_at) * 1000
 
@@ -611,4 +653,3 @@ class TailorEngine:
             plan=plan,
             trim_applied=trim_applied,
         )
-

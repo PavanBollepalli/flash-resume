@@ -9,6 +9,22 @@
   const FAB_ID = "fr-fab";
   const TOAST_ID = "fr-toast";
   const STYLE_ID = "fr-style";
+  let resumeMode = "truthful";
+
+  function applyModeTheme(mode) {
+    resumeMode = mode === "interview_prep" ? "interview_prep" : "truthful";
+    const fab = document.getElementById(FAB_ID);
+    if (fab) fab.classList.toggle("fr-interview-mode", resumeMode === "interview_prep");
+  }
+
+  chrome.storage.local.get("fr_mode", (data) => {
+    applyModeTheme(data.fr_mode);
+  });
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === "local" && changes.fr_mode) {
+      applyModeTheme(changes.fr_mode.newValue);
+    }
+  });
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -33,6 +49,13 @@
         width: 52px; height: 52px; border-radius: 50%;
         font-size: 22px;
         box-shadow: 0 4px 14px rgba(59,130,246,.45);
+      }
+      #${FAB_ID}.fr-interview-mode {
+        background: #d92d20;
+        box-shadow: -2px 0 8px rgba(180,35,24,.35);
+      }
+      #${FAB_ID}.fr-interview-mode:hover {
+        box-shadow: 0 4px 14px rgba(180,35,24,.45);
       }
       #${FAB_ID}.fr-working { pointer-events: none; opacity: .6; animation: fr-pulse 1s infinite; }
       @keyframes fr-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
@@ -110,7 +133,12 @@
       const res = await fetch(`${API_BASE}/api/tailor`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jd, company: company || null, role: role || null }),
+        body: JSON.stringify({
+          jd,
+          company: company || null,
+          role: role || null,
+          mode: resumeMode,
+        }),
       });
       const data = await res.json();
       if (!res.ok || data.error || data.success === false) {
@@ -136,6 +164,7 @@
     btn.title = "Flash Resume — Tailor resume to this job";
     btn.addEventListener("click", tailor);
     document.body.appendChild(btn);
+    applyModeTheme(resumeMode);
   }
 
   // Always visible, everywhere — no detection, no gates.

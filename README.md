@@ -190,6 +190,13 @@ Open any job on **LinkedIn**, **Indeed**, or **Greenhouse** and **tap the ⚡ fl
 
 Open the popup and hit **"⚡ Tailor 1-Page Resume"** — company, role, and JD are auto-filled (including anything you've text-selected on the page).
 
+### Resume modes
+
+The extension has two explicit modes:
+
+* **Truthful** — the default. Only skills and experience supported by the master resume are integrated.
+* **Interview prep** — keeps the same evidence-based score and never adds a skill to experience, bullets, or normal skills. It can add a small number of closely related JD skills to a separate **Familiarity** section, with each item labeled `(familiarity)`. For example, an existing Python background may surface `FastAPI (familiarity)`. Review these items and build enough hands-on knowledge to discuss them accurately in an interview.
+
 ### The terminal way (everywhere else)
 
 Copy the job description (`Ctrl+C`), then:

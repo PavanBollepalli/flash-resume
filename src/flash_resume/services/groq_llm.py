@@ -19,6 +19,7 @@ from flash_resume.models.resume import MasterResume
 from flash_resume.models.tailoring import JDKeywords, TailorPlan
 from flash_resume.services.llm import (
     CONDENSE_SYSTEM_INSTRUCTION,
+    INTERVIEW_MODE_INSTRUCTION,
     JD_EXTRACT_INSTRUCTION,
     PARSE_RESUME_INSTRUCTION,
     TAILOR_SYSTEM_INSTRUCTION,
@@ -121,6 +122,7 @@ class GroqLLMService:
         supported_terms: Optional[list[str]] = None,
         unsupported_terms: Optional[list[str]] = None,
         jd_keywords: Optional[JDKeywords] = None,
+        interview_mode: bool = False,
     ) -> TailorPlan:
         """Call Groq to generate a structured TailorPlan (same contract as LLMService)."""
         resume_payload = {
@@ -176,6 +178,12 @@ JD terms not supported by the master resume: {", ".join(unsupported_terms or [])
 Analyze the Job Description, extract core technical keywords, and generate a surgical, word-count-constrained TailorPlan.
 Return ONLY the JSON object, no commentary.
 """
+        if interview_mode:
+            prompt += (
+                "\nINTERVIEW PREPARATION REQUEST:\n"
+                "Select at most 5 closely related unsupported JD skills for "
+                "preparation_skills. Do not add unrelated or senior-only skills.\n"
+            )
         schema_hint = json.dumps(TailorPlan.model_json_schema(), indent=2)
 
         response = self.client.chat.completions.create(
@@ -187,7 +195,13 @@ Return ONLY the JSON object, no commentary.
             reasoning_effort="low",
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": TAILOR_SYSTEM_INSTRUCTION},
+                {
+                    "role": "system",
+                    "content": (
+                        TAILOR_SYSTEM_INSTRUCTION
+                        + (INTERVIEW_MODE_INSTRUCTION if interview_mode else "")
+                    ),
+                },
                 {
                     "role": "system",
                     "content": f"Respond with a single JSON object matching this JSON Schema:\n{schema_hint}",

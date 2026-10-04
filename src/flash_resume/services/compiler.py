@@ -108,4 +108,3 @@ class CompilerService:
                 temp_json_path.unlink()
             if "temp_template" in locals() and temp_template is not None and temp_template.exists():
                 temp_template.unlink()
-

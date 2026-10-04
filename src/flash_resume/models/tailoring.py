@@ -61,6 +61,10 @@ class TailorPlan(BaseModel):
     ats_match_score: int = Field(default=85, description="Estimated ATS keyword coverage score (0-100)")
     matched_keywords: List[str] = Field(default_factory=list, description="Keywords already present or integrated")
     missing_keywords: List[str] = Field(default_factory=list, description="Keywords found in JD but unsupported")
+    preparation_skills: List[str] = Field(
+        default_factory=list,
+        description="JD skills the candidate plans to learn; never treated as current experience",
+    )
     requirement_matches: List[RequirementMatch] = Field(
         default_factory=list,
         description="Auditable requirement-to-resume evidence matrix used for ATS coverage",
@@ -98,4 +102,3 @@ class TailorResult(BaseModel):
         default=False,
         description="Whether content was auto-trimmed to fit the page budget",
     )
-

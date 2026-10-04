@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,6 +73,10 @@ class TailorRequest(BaseModel):
     jd: str = Field(description="Job description text extracted from page DOM")
     company: Optional[str] = Field(default=None, description="Optional detected company name")
     role: Optional[str] = Field(default=None, description="Optional detected role/title")
+    mode: Literal["truthful", "interview_prep"] = Field(
+        default="truthful",
+        description="Truthful tailoring or clearly labeled interview preparation",
+    )
 
 
 class ApiKeyRequest(BaseModel):
@@ -97,6 +101,7 @@ class TailorResponse(BaseModel):
     role: str
     ats_match_score: int
     matched_keywords: list[str]
+    preparation_skills: list[str]
     page_count: int
     pdf_path: str
     pdf_base64: str
@@ -187,6 +192,7 @@ def tailor_resume(req: TailorRequest):
             job_description=req.jd,
             company_override=req.company,
             role_override=req.role,
+            interview_mode=req.mode == "interview_prep",
         )
 
         pdf_bytes = Path(result.pdf_path).read_bytes()
@@ -198,6 +204,7 @@ def tailor_resume(req: TailorRequest):
             role=result.plan.role,
             ats_match_score=result.plan.ats_match_score,
             matched_keywords=result.plan.matched_keywords,
+            preparation_skills=result.plan.preparation_skills,
             page_count=result.page_count,
             pdf_path=result.pdf_path,
             pdf_base64=pdf_b64,
@@ -207,4 +214,3 @@ def tailor_resume(req: TailorRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-

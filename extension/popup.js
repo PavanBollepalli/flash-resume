@@ -18,7 +18,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   const companyInput = document.getElementById("companyInput");
   const roleInput = document.getElementById("roleInput");
   const jdInput = document.getElementById("jdInput");
+  const modeInput = document.getElementById("modeInput");
   const guideView = document.getElementById("guideView");
+
+  const applyModeTheme = (mode) => {
+    const interview = mode === "interview_prep";
+    document.body.classList.toggle("interview-mode", interview);
+  };
+
+  chrome.storage.local.get("fr_mode", (data) => {
+    const mode = data.fr_mode === "interview_prep" ? "interview_prep" : "truthful";
+    modeInput.value = mode;
+    applyModeTheme(mode);
+  });
+  modeInput.addEventListener("change", () => {
+    applyModeTheme(modeInput.value);
+    chrome.storage.local.set({ fr_mode: modeInput.value });
+  });
 
   // Onboarding entry points (server owns config now; these are inert).
   const openSetupLink = document.getElementById("openSetupLink");
@@ -139,6 +155,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           jd: jd,
           company: companyInput.value.trim() || undefined,
           role: roleInput.value.trim() || undefined,
+          mode: modeInput.value,
         }),
       });
 
@@ -168,6 +185,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         span.textContent = kw;
         chipContainer.appendChild(span);
       });
+      const prepSkills = document.getElementById("prepSkills");
+      const preparation = result.preparation_skills || [];
+      prepSkills.style.display = preparation.length ? "block" : "none";
+      prepSkills.textContent = preparation.length
+        ? `Familiarity (not current production experience): ${preparation.join(", ")}`
+        : "";
 
       if (outputDir) {
         document.getElementById("resSavePath").textContent = `📁 Already saved in: ${outputDir}`;

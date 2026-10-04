@@ -68,6 +68,18 @@ STRICT PRINCIPLES & CONSTRAINTS:
    - The resume should look naturally formatted, not ATS-stuffed.
 """
 
+INTERVIEW_MODE_INSTRUCTION = """
+INTERVIEW PREPARATION MODE IS ENABLED.
+The candidate may add a small number of JD skills they do not yet have to a
+separate preparation_skills list. Choose only skills that are reasonably
+learnable from the candidate's existing background, and never invent
+experience, project work, production usage, or proficiency. Do not put these
+skills in bullets, the summary, certifications, or normal skills categories.
+These will be rendered visibly under "Familiarity" so they are not
+represented as current production qualifications. The normal evidence-based ATS score
+must remain based only on covered or partial resume evidence.
+"""
+
 
 JD_EXTRACT_INSTRUCTION = """You are Flash Resume's ATS Keyword Extraction Engine.
 
@@ -261,6 +273,7 @@ class LLMService:
         supported_terms: Optional[list[str]] = None,
         unsupported_terms: Optional[list[str]] = None,
         jd_keywords: Optional[JDKeywords] = None,
+        interview_mode: bool = False,
     ) -> TailorPlan:
         """Call Gemini Flash to generate a structured TailorPlan."""
         resume_payload = {
@@ -316,11 +329,20 @@ JD terms not supported by the master resume: {", ".join(unsupported_terms or [])
 
 Analyze the Job Description, extract core technical keywords, and generate a surgical, word-count-constrained TailorPlan.
 """
+        if interview_mode:
+            prompt += (
+                "\nINTERVIEW PREPARATION REQUEST:\n"
+                "Select at most 5 closely related unsupported JD skills for "
+                "preparation_skills. Do not add unrelated or senior-only skills.\n"
+            )
         response = self.client.models.generate_content(
             model=self.model,
             contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction=TAILOR_SYSTEM_INSTRUCTION,
+                system_instruction=(
+                    TAILOR_SYSTEM_INSTRUCTION
+                    + (INTERVIEW_MODE_INSTRUCTION if interview_mode else "")
+                ),
                 response_mime_type="application/json",
                 response_schema=TailorPlan,
                 max_output_tokens=2048,
@@ -441,5 +463,3 @@ Analyze the Job Description, extract core technical keywords, and generate a sur
             return response.parsed
         text = response.text or "{}"
         return MasterResume.model_validate_json(text)
-
-

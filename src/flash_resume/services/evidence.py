@@ -42,6 +42,9 @@ RULES: dict[str, EvidenceRule] = {
     "vector database": EvidenceRule(("pgvector", "pinecone", "chromadb", "vector index", "vector search", "hnsw")),
     "sql database": EvidenceRule(("sql", "postgresql", "mysql", "sqlite", "mariadb", "oracle database")),
     "api integration": EvidenceRule(("rest api", "restful api", "api endpoint", "tavily", "groq", "gemini api", "webhook")),
+    "api product development": EvidenceRule(("api product", "api development", "rest api", "restful api", "api endpoint")),
+    "data structures": EvidenceRule(("data structure", "algorithms", "algorithmic problem solving")),
+    "software design": EvidenceRule(("software design", "system design", "architecture", "modular")),
     "ai workflow": EvidenceRule(("rag pipeline", "rag retrieval", "llm fallback", "prompt engineering", "retrieval pipeline")),
     "cloud deployment": EvidenceRule(("aws", "google cloud", "gcp", "azure", "docker", "ci cd", "github actions", "deployment"), partial=True),
     "aws cloud": EvidenceRule(("aws", "amazon web services", "google cloud", "gcp", "azure")),
@@ -96,6 +99,7 @@ def resume_evidence(resume: MasterResume) -> list[EvidenceItem]:
         for index, bullet in enumerate(project.bullets):
             add(f"projects.{project.id}.bullets[{index}]", bullet)
     for edu in resume.education:
+        add("education.degree", edu.degree)
         add("education.field_of_study", edu.field_of_study)
     for index, certification in enumerate(resume.certifications):
         add(f"certifications[{index}]", certification)
@@ -112,6 +116,12 @@ def _canonical_rule(requirement: str) -> str | None:
         return "performance optimization"
     if "api" in value and ("integration" in value or "integrate" in value):
         return "api integration"
+    if "api" in value and ("product" in value or "develop" in value):
+        return "api product development"
+    if "data structure" in value:
+        return "data structures"
+    if "software design" in value or "system design" in value:
+        return "software design"
     if "ai" in value and "workflow" in value:
         return "ai workflow"
     if "cloud" in value and ("deploy" in value or "infrastructure" in value):
@@ -167,6 +177,30 @@ def _evaluate_one(requirement: str, priority: str, evidence: list[EvidenceItem])
             evidence_locations=[item.location for item in exact[:3]], match_method="exact",
             reason="The requirement appears directly in the candidate-authored resume.",
         )
+
+    # Education requirements commonly combine a credential and a field while
+    # the structured resume stores them in separate fields.
+    if "bachelor" in normalized and any(
+        field in normalized for field in ("computer science", "engineering", "related field")
+    ):
+        degree_matches = _find_matches(("bachelor", "b tech", "b s", "b sc"), evidence)
+        field_matches = _find_matches(
+            ("computer science", "software engineering", "engineering"),
+            evidence,
+        )
+        if degree_matches and field_matches:
+            matched = degree_matches[:1] + field_matches[:2]
+            return RequirementMatch(
+                requirement=requirement,
+                normalized_requirement=normalized,
+                priority=priority,
+                status="covered",
+                confidence=1.0,
+                evidence=[item.text for item in matched],
+                evidence_locations=[item.location for item in matched],
+                match_method="structured_education",
+                reason="The degree and field are present in separate structured education fields.",
+            )
 
     rule_name = _canonical_rule(requirement)
     rule = RULES.get(rule_name or "")

@@ -37,6 +37,14 @@
       --radius: 14px;
     }
 
+    body.interview-mode {
+      --primary: #b42318;
+      --primary-soft: #d92d20;
+      --primary-glow: rgba(180, 35, 24, 0.22);
+      --bg-top: #fff1f0;
+      --card-border: #f3c7c3;
+    }
+
     * {
       box-sizing: border-box;
       margin: 0;
@@ -431,6 +439,16 @@
           <label for="jdInput">Job Description</label>
           <textarea id="jdInput" placeholder="Scraped from active tab or paste JD text…"></textarea>
         </div>
+        <div class="field-group">
+          <label for="modeInput">Resume Mode</label>
+          <select id="modeInput" style="width: 100%; background: var(--input-bg); border: 1px solid var(--card-border); color: var(--text); padding: 8px 10px; border-radius: 10px; font-size: 12px;">
+            <option value="truthful">Truthful — only supported skills</option>
+            <option value="interview_prep">Interview prep — add familiarity</option>
+          </select>
+          <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 5px;">
+            Interview prep never adds unsupported skills to experience or normal skills. It labels closely related JD skills as “familiarity”.
+          </div>
+        </div>
       </div>
 
       <button id="tailorBtn" class="btn btn-primary">
@@ -452,6 +470,7 @@
 
         <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px; font-weight: 600;">Integrated Keywords:</div>
         <div id="chipContainer" class="chip-container"></div>
+        <div id="prepSkills" style="display: none; font-size: 11px; color: var(--text-muted); margin-top: 10px;"></div>
         <div id="resSavePath" style="font-size: 11px; color: var(--text-muted); margin-top: 10px; word-break: break-all;"></div>
       </div>
 
