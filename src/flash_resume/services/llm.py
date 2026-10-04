@@ -46,13 +46,13 @@ STRICT PRINCIPLES & CONSTRAINTS:
    - Do NOT lengthen bullets. Do NOT add extra sentences or clauses that wrap onto new lines.
 3. SURGICAL MODIFICATION ONLY:
     - Select up to 3 to 4 high-impact bullet points to rephrase using the JD's exact terminology.
-    - Do not rewrite a bullet merely to produce an edit. Only modify it when the change adds one or more high-priority JD keywords supported by the master resume and materially improves relevance.
+    - Do not rewrite a bullet merely to produce an edit. Only modify it when the change adds JD keywords supported by the master resume and materially improves relevance for the job descreption given.
     - Preserve relevant keywords already present in the original bullet. If a bullet already matches the JD adequately, return a BulletEdit with action 'skip'. Omitting that bullet edit is also valid.
    - Update Skills categories with supported exact terms.
 4. SUMMARY TAILORING (ALWAYS produce summary_edit):
    - Rewrite the candidate's professional summary to mirror the JD's language.
    - Weave in the top 4-5 matched keywords naturally (do NOT keyword-stuff).
-   - Keep it to 3-4 punchy sentences, 60-70 words maximum.
+   - Keep it to 2-3 punchy sentences, 30-40 words maximum.
      - Preserve the candidate's actual title/role. Never infer or calculate years of
          experience from dates, projects, open-source work, or graduation dates. Only
          include a duration when the source resume explicitly states it.
@@ -136,6 +136,15 @@ TEXT CLEANING RULES:
 - Group every certification by category into 'certification_groups' (e.g. Cloud
   Certifications, DevOps, Data, License), while also listing every certification in the flat
   'certifications' array.
+
+SOFT SKILLS:
+- Add up to 6 concise, evidence-supported soft skills as a 'Soft Skills' item in the 'skills'
+    array. Derive them from behavior explicitly stated or strongly demonstrated in the source
+    resume (for example, code reviews can support collaboration or technical communication;
+    debugging and measurable optimization can support problem solving or analytical thinking).
+- Use short recruiter-readable labels such as 'Problem Solving' or 'Technical Communication'.
+- Do not invent generic traits, infer personality without evidence, or duplicate technical skills.
+- Omit the 'Soft Skills' category when the resume does not support any soft skill.
 
 NO-PUFFERY / HONEST WRITING RULES:
 - Strip empty intensifiers and self-applied superlatives that add no evidence: 'seasoned',

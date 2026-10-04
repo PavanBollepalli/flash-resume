@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -43,6 +44,33 @@ def server_command() -> str:
     if not pythonw.exists():
         pythonw = Path(sys.executable)
     return f'"{pythonw}" -m flash_resume.bootstrap'
+
+
+def start_now() -> None:
+    """Start the companion server without opening a console window.
+
+    Autostart registration only affects the next Windows logon. Setup calls
+    this separately so the extension can be used immediately.
+    """
+    _require_windows()
+    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    if not pythonw.exists():
+        pythonw = Path(sys.executable)
+
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    creationflags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+    try:
+        subprocess.Popen(
+            [str(pythonw), "-m", "flash_resume.bootstrap"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags,
+            close_fds=True,
+        )
+    except OSError as e:
+        logger.exception("Failed to start companion server")
+        raise RuntimeError(f"Could not start companion server: {e}") from e
 
 
 def install() -> str:

@@ -568,6 +568,12 @@ def setup_cmd() -> None:
         cmd_str = autostart.install()
         console.print(f"[green]✓ Server will start automatically at login.[/green]")
         console.print(f"  [dim]Registered: {cmd_str}[/dim]")
+        try:
+            autostart.start_now()
+            console.print("[green]✓ Background engine started now.[/green]")
+        except Exception as e:
+            console.print(f"[yellow]Autostart is registered, but the engine could not start now: {e}[/yellow]")
+            console.print("[dim]Try 'fs serve' in a terminal to see the startup error.[/dim]")
     except Exception as e:
         console.print(f"[yellow]Could not register autostart: {e}[/yellow]")
         console.print("[dim]You can start the server manually with 'fs serve'.[/dim]")

@@ -82,6 +82,8 @@
   }
 }
 
+#let project-bullet(value) = inline-text(value.replace("Stack:", "**Technologies:**"))
+
 // ---------------------------- Header ----------------------------
 #align(center)[
   #text(size: font-size + 6.4pt, weight: "bold", tracking: 0.5pt)[#upper(contact-name)]
@@ -198,10 +200,11 @@
         ]
       ],
     )
+    #let has-stack-bullet = proj.bullets.any(b => b.contains("Stack:") or b.contains("stack:") or b.contains("STACK:"))
     #list(
       spacing: item-spacing,
-      ..proj.bullets.map(b => [#inline-text(b)]),
-      ..if proj.at("technologies", default: ()).len() > 0 {
+      ..proj.bullets.map(b => [#project-bullet(b)]),
+      ..if proj.at("technologies", default: ()).len() > 0 and not has-stack-bullet {
         ([*Tech Stack:* #proj.technologies.join(", ").] ,)
       } else { () }
     )

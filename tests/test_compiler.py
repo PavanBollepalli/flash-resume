@@ -156,16 +156,18 @@ def test_education_and_all_project_links_render(tmp_path: Path):
         },
         "summary": "Summary",
         "awards": ["Award-winning builder"],
-        "skills": [],
+        "skills": [
+            {"category": "Soft Skills", "items": ["Problem Solving", "Technical Communication"]}
+        ],
         "experience": [],
         "projects": [
             {
                 "id": "project-1",
                 "name": "Project One",
-                "technologies": [],
+                "technologies": ["Python", "FastAPI"],
                 "github": "https://github.com/example/project",
                 "live_url": "https://project.example.com",
-                "bullets": ["Built it."],
+                "bullets": ["Built it.", "Stack: Python, FastAPI"],
             }
         ],
         "education": [
@@ -190,12 +192,17 @@ def test_education_and_all_project_links_render(tmp_path: Path):
     for expected in (
         "Software Engineer",
         "Award-winning builder",
+        "Problem Solving",
+        "Technical Communication",
         "Computer Science",
         "Dean's List",
         "GitHub",
         "Live",
     ):
         assert expected in text
+    assert "Tech Stack" not in text
+    assert "Technologies:" in text
+    assert "Stack:" not in text
 
     annotations = pypdf.PdfReader(str(output_pdf)).pages[0].get("/Annots")
     urls = {
