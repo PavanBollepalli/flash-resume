@@ -1,6 +1,6 @@
 [project]
 name = "flash-resume"
-version = "0.2.10"
+version = "0.2.11"
 description = "Fast, ATS-focused resume tailoring and PDF generation."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -35,6 +35,7 @@ packages = ["src/flash_resume"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "extension" = "flash_resume/extension"
+"templates" = "flash_resume/templates"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
