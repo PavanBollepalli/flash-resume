@@ -215,7 +215,7 @@ The wizard configures:
 
 ### Load the extension once
 
-1. Run:
+1. Run this after installing or upgrading Flash Resume:
 
    ```powershell
    fs extension-path
@@ -226,7 +226,17 @@ The wizard configures:
 4. Choose **Load unpacked**.
 5. Select the folder printed by `fs extension-path`.
 
-After source or package updates, reload the extension from the Extensions page.
+When a new Flash Resume version is released, existing users can update without
+loading the extension again:
+
+```powershell
+py -m pip install --upgrade flash-resume
+fs extension-update
+```
+
+Then open `chrome://extensions/` and click **Reload** on Flash Resume. The
+extension remains loaded from the same folder, so users do not need to remove
+and re-add it.
 
 ---
 

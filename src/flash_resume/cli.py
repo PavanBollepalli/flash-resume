@@ -645,9 +645,26 @@ def autostart_status_cmd() -> None:
 
 @app.command(name="extension-path")
 def extension_path_cmd() -> None:
-    """Print (and install if needed) the extension folder for Load-unpacked."""
+    """Refresh and print the extension folder for Load-unpacked."""
     ext_path = extension.display_path()
+    console.print("[green]✓ Extension updated.[/green]")
     console.print(f"Load the extension from: [bold cyan]{ext_path}[/bold cyan]")
+
+
+@app.command(name="extension-update")
+def extension_update_cmd() -> None:
+    """Copy the latest bundled extension into the existing Load-unpacked folder."""
+    try:
+        ext_path = extension.install_to()
+    except Exception as e:
+        console.print(f"[bold red]Failed to update the extension:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    console.print("[green]✓ Extension updated.[/green]")
+    console.print(f"  [dim]{ext_path}[/dim]")
+    console.print(
+        "[yellow]Open chrome://extensions/ and click Reload on Flash Resume "
+        "to activate the update.[/yellow]"
+    )
 
 
 if __name__ == "__main__":

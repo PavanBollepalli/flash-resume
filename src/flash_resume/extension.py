@@ -54,13 +54,22 @@ def install_to(where: Path | None = None) -> Path:
     dst = where or default_target_dir()
     dst.mkdir(parents=True, exist_ok=True)
     shutil.copytree(src, dst, dirs_exist_ok=True)
+
+    # Remove files from older extension versions so the unpacked folder mirrors
+    # the bundled extension instead of retaining deleted JavaScript or assets.
+    source_files = {path.relative_to(src) for path in src.rglob("*") if path.is_file()}
+    for path in sorted(dst.rglob("*"), reverse=True):
+        relative = path.relative_to(dst)
+        if path.is_file() and relative not in source_files:
+            path.unlink()
+        elif path.is_dir() and not any(path.iterdir()):
+            path.rmdir()
+
     logger.info("Extension installed to %s", dst)
     return dst
 
 
 def display_path() -> Path:
-    """Return the path users should Load-unpack from, ensuring it exists."""
+    """Refresh and return the path users should Load-unpack from."""
     dst = default_target_dir()
-    if not (dst / "manifest.json").exists():
-        install_to(dst)
-    return dst
+    return install_to(dst)
