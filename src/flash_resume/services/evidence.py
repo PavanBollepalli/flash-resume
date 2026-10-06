@@ -34,6 +34,41 @@ class EvidenceRule:
 # These are concept aliases, not a list of skills to inject.  A rule can only
 # award coverage when one of its aliases is already in a structured resume.
 RULES: dict[str, EvidenceRule] = {
+    "ai model development": EvidenceRule(
+        ("machine learning", "deep learning", "generative ai", "rag system", "rag pipeline", "model development"),
+        partial=True,
+    ),
+    "machine learning algorithms": EvidenceRule(
+        ("machine learning", "deep learning", "algorithm", "model", "neural network"),
+        partial=True,
+    ),
+    "natural language processing": EvidenceRule(
+        ("natural language processing", "nlp", "text extraction", "language model"),
+        partial=True,
+    ),
+    "computer vision": EvidenceRule(
+        ("computer vision", "opencv", "ocr", "image processing", "vision model"),
+        partial=True,
+    ),
+    "data analysis": EvidenceRule(
+        ("data analysis", "analytics", "analytics team", "dashboard", "data processing", "sql query"),
+        partial=True,
+    ),
+    "algorithm optimization": EvidenceRule(
+        ("algorithm optimization", "optimized", "optimization", "reduced latency", "query execution", "indexing"),
+        partial=True,
+    ),
+    "poc development": EvidenceRule(
+        ("proof of concept", "prototype", "prototyping", "built a", "developed a"),
+        partial=True,
+    ),
+    "bachelors degree": EvidenceRule(("bachelor", "b.tech", "b tech", "bachelor of technology")),
+    "cloud platform": EvidenceRule(("aws", "amazon web services", "gcp", "google cloud", "azure"), partial=True),
+    "ethical ai privacy": EvidenceRule(("ethical ai", "privacy", "privacy-first", "data privacy", "secure", "security")),
+    "security experience": EvidenceRule(("security", "secure", "authentication", "privacy", "middleware")),
+    "chatbot": EvidenceRule(
+        ("chatbot", "chatbots", "virtual assistant", "conversational ai", "chat assistant")
+    ),
     "testing": EvidenceRule(("unit test", "unit tests", "test suite", "pytest", "automated test")),
     "reusable code": EvidenceRule(("reusable", "shared module", "shared utility", "library")),
     "maintainable code": EvidenceRule(("reusable", "docstring", "unit test", "code review", "modular")),
@@ -45,6 +80,16 @@ RULES: dict[str, EvidenceRule] = {
     "api product development": EvidenceRule(("api product", "api development", "rest api", "restful api", "api endpoint")),
     "data structures": EvidenceRule(("data structure", "algorithms", "algorithmic problem solving")),
     "software design": EvidenceRule(("software design", "system design", "architecture", "modular")),
+    "design principles": EvidenceRule(
+        ("design principle", "software design", "system design", "architecture", "modular"),
+        partial=True,
+    ),
+    "object oriented programming": EvidenceRule(
+        ("object oriented", "object-oriented", "oop", "classes", "inheritance", "polymorphism")
+    ),
+    "concurrency": EvidenceRule(
+        ("concurrency", "concurrent", "parallel", "parallel process", "asynchronous", "async")
+    ),
     "ai workflow": EvidenceRule(("rag pipeline", "rag retrieval", "llm fallback", "prompt engineering", "retrieval pipeline")),
     "cloud deployment": EvidenceRule(("aws", "google cloud", "gcp", "azure", "docker", "ci cd", "github actions", "deployment"), partial=True),
     "aws cloud": EvidenceRule(("aws", "amazon web services", "google cloud", "gcp", "azure")),
@@ -108,11 +153,37 @@ def resume_evidence(resume: MasterResume) -> list[EvidenceItem]:
 
 def _canonical_rule(requirement: str) -> str | None:
     value = _singular(normalize(requirement))
+    if "ai model" in value or "model development" in value:
+        return "ai model development"
+    if "chatbot" in value or "virtual assistant" in value:
+        return "chatbot"
+    if "machine learning algorithm" in value:
+        return "machine learning algorithms"
+    if "natural language" in value or value == "nlp technique":
+        return "natural language processing"
+    if "computer vision" in value:
+        return "computer vision"
+    if "data analys" in value:
+        return "data analysis"
+    if "algorithm optimization" in value:
+        return "algorithm optimization"
+    if "proof of concept" in value or value.startswith("poc"):
+        return "poc development"
+    if "bachelor" in value and len(value.split()) <= 4:
+        return "bachelors degree"
+    if value in {"aws", "gcp", "google cloud", "azure"}:
+        return "cloud platform"
+    if "ethical ai" in value or "privacy regulation" in value:
+        return "ethical ai privacy"
+    if value == "security experience" or value.startswith("security"):
+        return "security experience"
     if "mongodb" in value and "sql database" in value:
         return "sql database"  # The JD's MongoDB / SQL-database alternative.
     if "vector" in value and "database" in value:
         return "vector database"
     if "performance" in value and ("optim" in value or "tuning" in value):
+        return "performance optimization"
+    if "performance" in value:
         return "performance optimization"
     if "api" in value and ("integration" in value or "integrate" in value):
         return "api integration"
@@ -122,6 +193,12 @@ def _canonical_rule(requirement: str) -> str | None:
         return "data structures"
     if "software design" in value or "system design" in value:
         return "software design"
+    if "design principle" in value:
+        return "design principles"
+    if "object oriented" in value:
+        return "object oriented programming"
+    if "concurr" in value or "parallel" in value or "asynchronous" in value:
+        return "concurrency"
     if "ai" in value and "workflow" in value:
         return "ai workflow"
     if "cloud" in value and ("deploy" in value or "infrastructure" in value):
@@ -157,6 +234,36 @@ def _canonical_rule(requirement: str) -> str | None:
     return None
 
 
+def _compound_parts(requirement: str) -> tuple[str, list[str]] | None:
+    """Return a compound requirement's operator and atomic alternatives."""
+    if "/" in requirement:
+        parts = [part.strip() for part in requirement.split("/") if part.strip()]
+        if len(parts) > 1:
+            return "or", parts
+    if "," in requirement:
+        parts = [part.strip() for part in requirement.split(",") if part.strip()]
+        if 1 < len(parts) <= 5:
+            return "or", parts
+    parts = re.split(r"\s+(?:or|either)\s+", requirement, flags=re.IGNORECASE)
+    if len(parts) > 1 and not any(
+        marker in requirement.casefold() for marker in ("or equivalent", "or similar")
+    ):
+        return "or", [part.strip() for part in parts if part.strip()]
+    parts = re.split(r"\s+and\s+", requirement, flags=re.IGNORECASE)
+    if len(parts) > 1:
+        return "and", [part.strip() for part in parts if part.strip()]
+    return None
+
+
+def _is_context_requirement(requirement: str) -> bool:
+    """Exclude job-title/context phrases from technical ATS scoring."""
+    value = _singular(normalize(requirement))
+    return bool(
+        re.search(r"\b(engineer|developer|designer|analyst|manager)\b", value)
+        and len(value.split()) <= 5
+    )
+
+
 def _find_matches(aliases: Iterable[str], evidence: list[EvidenceItem]) -> list[EvidenceItem]:
     normalized_aliases = [_singular(normalize(alias)) for alias in aliases]
     found: list[EvidenceItem] = []
@@ -178,12 +285,63 @@ def _evaluate_one(requirement: str, priority: str, evidence: list[EvidenceItem])
             reason="The requirement appears directly in the candidate-authored resume.",
         )
 
+    compound = _compound_parts(requirement)
+    if compound:
+        operator, parts = compound
+        part_results = [
+            (part, _evaluate_one(part, priority, evidence))
+            for part in parts
+        ]
+        matched_parts = [
+            (part, result)
+            for part, result in part_results
+            if result.status != "unsupported"
+        ]
+        if matched_parts:
+            matched_evidence = [
+                (text, location)
+                for _, result in matched_parts
+                for text, location in zip(
+                    result.evidence[:2], result.evidence_locations[:2]
+                )
+            ]
+            if operator == "or":
+                status = "covered" if any(
+                    result.status == "covered" for _, result in matched_parts
+                ) else "partial"
+                reason = "At least one accepted alternative is present in the candidate-authored resume."
+            else:
+                status = (
+                    "covered"
+                    if len(matched_parts) == len(parts)
+                    and all(result.status == "covered" for _, result in matched_parts)
+                    else "partial"
+                )
+                reason = (
+                    "All parts of the compound requirement are supported."
+                    if status == "covered"
+                    else "Some, but not all, parts of the compound requirement are supported."
+                )
+            return RequirementMatch(
+                requirement=requirement,
+                normalized_requirement=normalized,
+                priority=priority,
+                status=status,
+                confidence=1.0 if status == "covered" else 0.65,
+                evidence=[text for text, _ in matched_evidence[:3]],
+                evidence_locations=[location for _, location in matched_evidence[:3]],
+                match_method="compound_requirement",
+                reason=reason,
+            )
+
     # Education requirements commonly combine a credential and a field while
     # the structured resume stores them in separate fields.
-    if "bachelor" in normalized and any(
+    if any(
+        credential in normalized for credential in ("bachelor", "b tech", "b.tech")
+    ) and any(
         field in normalized for field in ("computer science", "engineering", "related field")
     ):
-        degree_matches = _find_matches(("bachelor", "b tech", "b s", "b sc"), evidence)
+        degree_matches = _find_matches(("bachelor", "b tech", "b.tech", "b s", "b sc"), evidence)
         field_matches = _find_matches(
             ("computer science", "software engineering", "engineering"),
             evidence,
@@ -236,7 +394,7 @@ def evaluate_requirements(resume: MasterResume, jd_keywords: JDKeywords | None) 
     for term, priority in candidates:
         term = term.strip()
         key = (normalize(term), priority)
-        if term and key not in seen:
+        if term and key not in seen and not _is_context_requirement(term):
             seen.add(key)
             assessment.append(_evaluate_one(term, priority, evidence))
     return assessment

@@ -91,7 +91,6 @@ class TailorResult(BaseModel):
     """Final artifact generation details and verification metrics."""
 
     pdf_path: str = Field(description="Absolute path to generated PDF")
-    json_path: str = Field(description="Absolute path to tailored resume JSON")
     diff_path: str = Field(description="Absolute path to Markdown diff report")
     page_count: int = Field(default=1, description="Verified total page count")
     llm_time_ms: float = Field(default=0.0, description="Gemini plan-generation time in ms")

@@ -20,11 +20,6 @@
       --success-bg: rgba(103, 148, 54, 0.1);
       --success-border: rgba(103, 148, 54, 0.28);
 
-      --lime: #A5BE00;         /* Lime Moss */
-      --lime-bg: rgba(165, 190, 0, 0.16);
-      --lime-border: rgba(165, 190, 0, 0.38);
-      --lime-text: #5b6a00;
-
       --danger: #C1443C;
       --danger-bg: rgba(193, 68, 60, 0.09);
       --danger-border: rgba(193, 68, 60, 0.26);
@@ -59,6 +54,7 @@
       padding: 16px;
       font-size: 13px;
       line-height: 1.5;
+      transition: background 0.45s ease, color 0.3s ease;
     }
 
     header {
@@ -169,11 +165,108 @@
       padding: 14px;
       margin-bottom: 14px;
       box-shadow: var(--card-shadow);
-      transition: border-color 0.2s;
+      transition: border-color 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
     }
 
     .card:focus-within {
       border-color: var(--primary-soft);
+    }
+
+    .mode-switch {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 5px;
+      background: var(--input-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      transition: background 0.35s ease, border-color 0.35s ease;
+    }
+
+    .mode-option {
+      position: relative;
+      z-index: 1;
+      min-height: 82px;
+      padding: 10px 9px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--text-muted);
+      text-align: left;
+      cursor: pointer;
+      transition: color 0.25s ease, transform 0.25s ease, background 0.35s ease,
+        border-color 0.35s ease, box-shadow 0.35s ease;
+    }
+
+    .mode-option:hover {
+      transform: translateY(-1px);
+      color: var(--text);
+    }
+
+    .mode-option.active {
+      background: var(--card);
+      border-color: var(--primary-soft);
+      color: var(--text);
+      box-shadow: 0 5px 15px var(--primary-glow);
+    }
+
+    .mode-option-icon {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--primary);
+      font-size: 18px;
+      line-height: 1;
+      transition: color 0.35s ease;
+    }
+
+    .mode-option-name {
+      display: block;
+      font-size: 11.5px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .mode-option-copy {
+      display: block;
+      margin-top: 4px;
+      font-size: 10px;
+      line-height: 1.25;
+      color: var(--text-muted);
+    }
+
+    .mode-description {
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      margin-top: 8px;
+      color: var(--text-muted);
+      font-size: 10.5px;
+      line-height: 1.35;
+      transition: color 0.35s ease;
+    }
+
+    .mode-description::before {
+      content: "✓";
+      flex: 0 0 auto;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: var(--primary-glow);
+      color: var(--primary);
+      font-size: 10px;
+      font-weight: 900;
+      text-align: center;
+      line-height: 15px;
+      transition: background 0.35s ease, color 0.35s ease;
+    }
+
+    .mode-input-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
     }
 
     .card-title {
@@ -201,7 +294,7 @@
       margin-bottom: 4px;
     }
 
-    input, textarea {
+    input {
       width: 100%;
       background: var(--input-bg);
       border: 1px solid var(--card-border);
@@ -213,97 +306,11 @@
       transition: border-color 0.2s, box-shadow 0.2s;
     }
 
-    input::placeholder, textarea::placeholder { color: var(--text-faint); }
+    input::placeholder { color: var(--text-faint); }
 
     input:focus, textarea:focus {
       border-color: var(--primary-soft);
       box-shadow: 0 0 0 3px rgba(5, 102, 141, 0.14);
-    }
-
-    textarea {
-      resize: vertical;
-      min-height: 64px;
-    }
-
-    .btn {
-      width: 100%;
-      padding: 11px 16px;
-      border-radius: 11px;
-      font-size: 13px;
-      font-weight: 700;
-      border: none;
-      cursor: pointer;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 8px;
-      transition: all 0.2s ease;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, var(--primary), var(--primary-soft));
-      color: #fff;
-      box-shadow: 0 6px 18px var(--primary-glow);
-    }
-
-    .btn-primary:hover:not(:disabled) {
-      background: linear-gradient(135deg, var(--primary-soft), var(--primary));
-      transform: translateY(-1px);
-      box-shadow: 0 8px 22px var(--primary-glow);
-    }
-
-    .btn-primary:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    .result-view {
-      display: none;
-    }
-
-    .result-score {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 10px;
-    }
-
-    .score-circle {
-      font-size: 24px;
-      font-weight: 800;
-      color: var(--success);
-    }
-
-    .chip-container {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 8px;
-    }
-
-    .chip {
-      background: var(--lime-bg);
-      color: var(--lime-text);
-      border: 1px solid var(--lime-border);
-      border-radius: 7px;
-      padding: 2px 8px;
-      font-size: 11px;
-      font-weight: 700;
-    }
-
-    .spinner {
-      width: 16px;
-      height: 16px;
-      border: 2px solid rgba(255, 255, 255, 0.4);
-      border-top-color: #ffffff;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      display: none;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
     }
 
     .notification {
@@ -375,7 +382,7 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      *, .spinner, .status-dot {
+      *, .status-dot {
         animation: none !important;
         transition: none !important;
       }
@@ -417,66 +424,39 @@
     <div id="guideView" class="guide card">
       <div class="card-title">How to use</div>
       <ol>
-        <li>The ⚡ floating button appears on job pages (LinkedIn, Indeed, Greenhouse).</li>
-        <li><b>Tap it once</b> — it auto-detects the job and tailors your resume.</li>
-        <li>Or click <b>⚡ Flash Resume</b> and hit "Tailor" from here for the detailed view.</li>
+        <li>Drag across the job description you want to use.</li>
+        <li>Click the blue or red Flash Resume button on the right edge.</li>
+        <li>Only the selected job description is sent to the local engine — no full-page parsing.</li>
+        <li>Use this popup to choose between Truthful and Interview mode.</li>
         <li>The 1-page PDF is saved to your configured folder automatically.</li>
       </ol>
     </div>
 
-    <div id="tailorForm">
+    <div>
       <div class="card">
-        <div class="card-title">Detected Job Details</div>
+        <div class="card-title">Choose your resume mode</div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+          Select the job description, then click the Flash Resume button on the right edge of the page.
+        </p>
         <div class="field-group">
-          <label for="companyInput">Company Name</label>
-          <input type="text" id="companyInput" placeholder="Auto-detected or enter name">
-        </div>
-        <div class="field-group">
-          <label for="roleInput">Job Title / Role</label>
-          <input type="text" id="roleInput" placeholder="Auto-detected or enter title">
-        </div>
-        <div class="field-group">
-          <label for="jdInput">Job Description</label>
-          <textarea id="jdInput" placeholder="Scraped from active tab or paste JD text…"></textarea>
-        </div>
-        <div class="field-group">
-          <label for="modeInput">Resume Mode</label>
-          <select id="modeInput" style="width: 100%; background: var(--input-bg); border: 1px solid var(--card-border); color: var(--text); padding: 8px 10px; border-radius: 10px; font-size: 12px;">
-            <option value="truthful">Truthful — only supported skills</option>
-            <option value="interview_prep">Interview prep — add familiarity</option>
-          </select>
-          <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 5px;">
-            Interview prep never adds unsupported skills to experience or normal skills. It labels closely related JD skills as “familiarity”.
+          <input id="modeInput" class="mode-input-hidden" value="truthful">
+          <div class="mode-switch" role="group" aria-label="Resume mode">
+            <button type="button" class="mode-option active" data-mode="truthful" aria-pressed="true">
+              <span class="mode-option-icon">✓</span>
+              <span class="mode-option-name">Truthful mode</span>
+              <span class="mode-option-copy">Only skills backed by your resume</span>
+            </button>
+            <button type="button" class="mode-option" data-mode="interview_prep" aria-pressed="false">
+              <span class="mode-option-icon">✦</span>
+              <span class="mode-option-name">Interview mode</span>
+              <span class="mode-option-copy">Add professional familiarity signals</span>
+            </button>
+          </div>
+          <div id="modeDescription" class="mode-description">
+            Your resume stays evidence-led while matching the job honestly.
           </div>
         </div>
       </div>
-
-      <button id="tailorBtn" class="btn btn-primary">
-        <div id="btnSpinner" class="spinner"></div>
-        <span id="btnText">⚡ Tailor 1-Page Resume</span>
-      </button>
-    </div>
-
-    <div id="resultView" class="result-view">
-      <div class="card">
-        <div class="card-title">Tailoring Completed</div>
-        <div class="result-score">
-          <div>
-            <div style="font-weight: 700; font-size: 14px;" id="resCompanyRole">Company — Role</div>
-            <div style="color: var(--text-muted); font-size: 11px;">Single-Page Layout Verified</div>
-          </div>
-          <div class="score-circle" id="resScore">92%</div>
-        </div>
-
-        <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px; font-weight: 600;">Integrated Keywords:</div>
-        <div id="chipContainer" class="chip-container"></div>
-        <div id="prepSkills" style="display: none; font-size: 11px; color: var(--text-muted); margin-top: 10px;"></div>
-        <div id="resSavePath" style="font-size: 11px; color: var(--text-muted); margin-top: 10px; word-break: break-all;"></div>
-      </div>
-
-      <button id="resetBtn" class="btn btn-primary" style="margin-bottom: 8px;">
-        Tailor Another Job
-      </button>
     </div>
   </main>
 

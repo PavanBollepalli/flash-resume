@@ -376,13 +376,11 @@ def tailor_cmd(
         out_base = Path(output_dir or cfg.output_dir)
         out_base.mkdir(parents=True, exist_ok=True)
         pdf_path = out_base / f"{target_company}_{target_role.replace(' ', '_')}.pdf"
-        json_path = out_base / f"{target_company}_{target_role.replace(' ', '_')}.json"
         diff_path = out_base / f"{target_company}_{target_role.replace(' ', '_')}.diff.md"
 
         tailored, pages, compile_ms, _ = trim_resume_to_fit(
             tailored, compiler, pdf_path, max_pages=cfg.max_pages
         )
-        json_path.write_text(tailored.model_dump_json(indent=2), encoding="utf-8")
         diff_path.write_text(
             generate_diff_markdown(master_resume, tailored, mock_plan, pages, compile_ms),
             encoding="utf-8",
@@ -391,7 +389,6 @@ def tailor_cmd(
         from flash_resume.models.tailoring import TailorResult
         result = TailorResult(
             pdf_path=str(pdf_path.resolve()),
-            json_path=str(json_path.resolve()),
             diff_path=str(diff_path.resolve()),
             page_count=pages,
             llm_time_ms=0.0,

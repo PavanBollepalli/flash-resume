@@ -79,10 +79,8 @@ def display_tailor_summary(result: TailorResult) -> None:
     console.print(
         Panel(
             f"[bold]PDF Output:[/]  [underline cyan]{result.pdf_path}[/underline cyan]\n"
-            f"[bold]JSON Data:[/]   [dim]{result.json_path}[/dim]\n"
             f"[bold]Diff Report:[/] [dim]{result.diff_path}[/dim]",
             title="[bold]Saved Artifacts[/bold]",
             border_style="blue",
         )
     )
-

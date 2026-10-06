@@ -1,266 +1,76 @@
-// Flash Resume Extension Popup Controller
+// Flash Resume extension popup controller.
 
 const API_BASE = "http://127.0.0.1:13450";
-
-let currentPdfBase64 = null;
-let currentFilename = "Tailored_Resume.pdf";
-let outputDir = "";
-
-// Config is owned by the server (set via `fs setup`); the browser no longer
-// runs its own setup wizard.
 
 document.addEventListener("DOMContentLoaded", async () => {
   const statusBadge = document.getElementById("statusBadge");
   const statusText = document.getElementById("statusText");
   const offlineNotice = document.getElementById("offlineNotice");
   const setupCard = document.getElementById("setupCard");
-  const tailorBtn = document.getElementById("tailorBtn");
-  const companyInput = document.getElementById("companyInput");
-  const roleInput = document.getElementById("roleInput");
-  const jdInput = document.getElementById("jdInput");
   const modeInput = document.getElementById("modeInput");
+  const modeOptions = [...document.querySelectorAll(".mode-option")];
+  const modeDescription = document.getElementById("modeDescription");
   const guideView = document.getElementById("guideView");
 
-  const applyModeTheme = (mode) => {
+  const modeCopy = {
+    truthful: "Your resume stays evidence-led while matching the job honestly.",
+    interview_prep: "Adds closely related skills as Familiarity — never as production experience.",
+  };
+
+  const applyModeTheme = (mode, persist = false) => {
     const interview = mode === "interview_prep";
+    const normalizedMode = interview ? "interview_prep" : "truthful";
+    modeInput.value = normalizedMode;
     document.body.classList.toggle("interview-mode", interview);
+    modeOptions.forEach((option) => {
+      const active = option.dataset.mode === normalizedMode;
+      option.classList.toggle("active", active);
+      option.setAttribute("aria-pressed", String(active));
+    });
+    modeDescription.textContent = modeCopy[normalizedMode];
+    if (persist) chrome.storage.local.set({ fr_mode: normalizedMode });
   };
 
   chrome.storage.local.get("fr_mode", (data) => {
-    const mode = data.fr_mode === "interview_prep" ? "interview_prep" : "truthful";
-    modeInput.value = mode;
-    applyModeTheme(mode);
-  });
-  modeInput.addEventListener("change", () => {
-    applyModeTheme(modeInput.value);
-    chrome.storage.local.set({ fr_mode: modeInput.value });
+    applyModeTheme(data.fr_mode);
   });
 
-  // Onboarding entry points (server owns config now; these are inert).
-  const openSetupLink = document.getElementById("openSetupLink");
-  if (openSetupLink) openSetupLink.style.display = "none";
-  const openOnboardingBtn = document.getElementById("openOnboardingBtn");
-  if (openOnboardingBtn) openOnboardingBtn.style.display = "none";
+  modeOptions.forEach((option) => {
+    option.addEventListener("click", () => {
+      applyModeTheme(option.dataset.mode, true);
+    });
+  });
 
-  // How-to guide toggle (closing it marks the user as onboarded)
   const toggleGuide = () => {
     guideView.style.display = guideView.style.display === "block" ? "none" : "block";
     chrome.storage.local.set({ fr_onboarded: true });
   };
+
   document.getElementById("guideToggle").addEventListener("click", toggleGuide);
   document.getElementById("reopenGuide").addEventListener("click", toggleGuide);
 
-  // First-run: auto-open the guide until onboarded. (The setup card is shown
-  // from the status check below only when the server reports a missing key.)
   chrome.storage.local.get("fr_onboarded", (data) => {
-    if (!data.fr_onboarded) {
-      guideView.style.display = "block";
-    }
+    if (!data.fr_onboarded) guideView.style.display = "block";
   });
 
-  // 1. Check Server Status
-  let engineOnline = false;
   try {
     const res = await fetch(`${API_BASE}/api/status`);
-    if (res.ok) {
-      const data = await res.json();
-      engineOnline = true;
-      statusBadge.classList.remove("offline");
-      const providerTag = data.provider === "groq" ? "⚡" : "🎯";
-      statusText.textContent = data.candidate_name
-        ? `${data.candidate_name} ${providerTag} (Ready)`
-        : `Engine Ready ${providerTag}`;
-      offlineNotice.style.display = "none";
-      outputDir = data.output_dir || "";
-      const hasActiveKey = data.provider === "groq" ? data.has_groq_key : data.has_api_key;
-      if (!hasActiveKey) {
-        setupCard.style.display = "block";
-      }
-    } else {
-      throw new Error("Server error");
-    }
+    if (!res.ok) throw new Error("Server error");
+
+    const data = await res.json();
+    statusBadge.classList.remove("offline");
+    const providerTag = data.provider === "groq" ? "⚡" : "🎯";
+    statusText.textContent = data.candidate_name
+      ? `${data.candidate_name} ${providerTag} (Ready)`
+      : `Engine Ready ${providerTag}`;
+    offlineNotice.style.display = "none";
+
+    const hasActiveKey = data.provider === "groq" ? data.has_groq_key : data.has_api_key;
+    if (!hasActiveKey) setupCard.style.display = "block";
   } catch (err) {
     statusBadge.classList.add("offline");
     statusText.textContent = "Offline";
     offlineNotice.style.display = "block";
-    tailorBtn.disabled = true;
     setupCard.style.display = "block";
   }
-
-  // 2. Extract Job from Active Tab
-  // Content script responds first; if the tab was opened before the extension
-  // (re)loaded, the content script is not injected, so fall back to
-  // chrome.scripting.executeScript which always works on the active tab.
-  const fillForm = (response) => {
-    if (!response) return;
-    if (response.company && !companyInput.value) {
-      companyInput.value = response.company;
-    }
-    if (response.title && !roleInput.value) {
-      roleInput.value = response.title;
-    }
-    if (response.jd && !jdInput.value) {
-      jdInput.value = response.jd;
-    }
-  };
-
-  const extractViaScripting = async (tabId) => {
-    try {
-      const results = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: extractJobDetailsInPage,
-      });
-      if (results && results[0] && results[0].result) {
-        fillForm(results[0].result);
-      }
-    } catch (e) {
-      console.warn("Scripting extraction failed:", e);
-    }
-  };
-
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab && tab.id) {
-      chrome.tabs.sendMessage(tab.id, { action: "extract_job" }, (response) => {
-        if (chrome.runtime.lastError || !response) {
-          extractViaScripting(tab.id);
-          return;
-        }
-        fillForm(response);
-      });
-    }
-  } catch (e) {
-    console.warn("Could not query active tab:", e);
-  }
-
-  // 3. Tailor Action
-  tailorBtn.addEventListener("click", async () => {
-    const jd = jdInput.value.trim();
-    if (!jd) {
-      alert("Please provide or paste a Job Description.");
-      return;
-    }
-
-    const btnSpinner = document.getElementById("btnSpinner");
-    const btnText = document.getElementById("btnText");
-    tailorBtn.disabled = true;
-    btnSpinner.style.display = "block";
-    btnText.textContent = "Tailoring...";
-
-    try {
-      const resp = await fetch(`${API_BASE}/api/tailor`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jd: jd,
-          company: companyInput.value.trim() || undefined,
-          role: roleInput.value.trim() || undefined,
-          mode: modeInput.value,
-        }),
-      });
-
-      if (!resp.ok) {
-        const errorData = await resp.json();
-        throw new Error(errorData.detail || "Tailoring failed");
-      }
-
-      const result = await resp.json();
-      currentPdfBase64 = result.pdf_base64;
-      currentFilename = `${result.company}_${result.role}.pdf`.replace(/\s+/g, "_");
-
-      // Switch to results view
-      document.getElementById("tailorForm").style.display = "none";
-      guideView.style.display = "none";
-      const resultView = document.getElementById("resultView");
-      resultView.style.display = "block";
-
-      document.getElementById("resCompanyRole").textContent = `${result.company} — ${result.role}`;
-      document.getElementById("resScore").textContent = `${result.ats_match_score}%`;
-
-      const chipContainer = document.getElementById("chipContainer");
-      chipContainer.innerHTML = "";
-      (result.matched_keywords || []).forEach((kw) => {
-        const span = document.createElement("span");
-        span.className = "chip";
-        span.textContent = kw;
-        chipContainer.appendChild(span);
-      });
-      const prepSkills = document.getElementById("prepSkills");
-      const preparation = result.preparation_skills || [];
-      prepSkills.style.display = preparation.length ? "block" : "none";
-      prepSkills.textContent = preparation.length
-        ? `Familiarity (not current production experience): ${preparation.join(", ")}`
-        : "";
-
-      if (outputDir) {
-        document.getElementById("resSavePath").textContent = `📁 Already saved in: ${outputDir}`;
-      }
-    } catch (error) {
-      alert("Error: " + error.message);
-    } finally {
-      tailorBtn.disabled = !engineOnline;
-      btnSpinner.style.display = "none";
-      btnText.textContent = "⚡ Tailor 1-Page Resume";
-    }
-  });
-
-  // 4. Reset Action
-  document.getElementById("resetBtn").addEventListener("click", () => {
-    document.getElementById("resultView").style.display = "none";
-    document.getElementById("tailorForm").style.display = "block";
-  });
 });
-
-// Self-contained extractor injected via chrome.scripting when the content
-// script is not present (e.g. tabs opened before the extension was loaded).
-function extractJobDetailsInPage() {
-  const url = window.location.href;
-  let title = "";
-  let company = "";
-  let jd = "";
-
-  if (url.includes("linkedin.com")) {
-    title = document.querySelector(".job-details-jobs-unified-top-card__job-title, .topcard__title, h1")?.innerText?.trim() || "";
-    company = document.querySelector(".job-details-jobs-unified-top-card__company-name, .topcard__org-name-link, .jobs-unified-top-card__company-name")?.innerText?.trim() || "";
-    jd = document.querySelector("#job-details, .jobs-description__content, .description__text")?.innerText?.trim() || "";
-  } else if (url.includes("indeed.com")) {
-    title = document.querySelector(".jobsearch-JobInfoHeader-title, h1")?.innerText?.trim() || "";
-    company = document.querySelector("[data-company-name='true'], .jobsearch-InlineCompanyRating-companyHeader")?.innerText?.trim() || "";
-    jd = document.querySelector("#jobDescriptionText, .jobsearch-jobDescriptionText")?.innerText?.trim() || "";
-  } else if (url.includes("greenhouse.io") || url.includes("lever.co")) {
-    title = document.querySelector(".app-title, .posting-headline h2, h1")?.innerText?.trim() || "";
-    company = document.querySelector(".company-name, .main-header-logo, .posting-headline")?.innerText?.trim() || "";
-    jd = document.querySelector("#content, .section-wrapper, .posting-description")?.innerText?.trim() || "";
-  }
-
-  const selectedText = window.getSelection().toString().trim();
-  if (selectedText.length > 50) {
-    jd = selectedText;
-  }
-
-  if (!jd) {
-    const mainEl = document.querySelector("article, main, .job-description, .description");
-    if (mainEl) {
-      jd = mainEl.innerText.trim();
-    }
-  }
-
-  return { title, company, jd };
-}
-
-function b64toBlob(b64Data, contentType = "", sliceSize = 512) {
-  const byteCharacters = atob(b64Data);
-  const byteArrays = [];
-
-  for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
-    const slice = byteCharacters.slice(offset, offset + sliceSize);
-    const byteNumbers = new Array(slice.length);
-    for (let i = 0; i < slice.length; i++) {
-      byteNumbers[i] = slice.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    byteArrays.push(byteArray);
-  }
-
-  return new Blob(byteArrays, { type: contentType });
-}

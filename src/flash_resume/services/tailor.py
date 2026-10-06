@@ -121,7 +121,7 @@ def highlight_keywords(resume: MasterResume, keywords: list[str]) -> MasterResum
     The Typst template renders ``**…**`` spans in bold via its ``bold-markup``
     helper so integrated keywords catch a recruiter's eye. Matching is
     case-insensitive and whole-word; original casing is preserved. This is a
-    display-only pass — run it after trimming/JSON save so structured output
+    display-only pass — run it after trimming so the generated PDF
     stays marker-free.
     """
     highlighted = copy.deepcopy(resume)
@@ -584,7 +584,6 @@ class TailorEngine:
 
         prefix = f"{sanitize_filename(plan.company)}_{sanitize_filename(plan.role)}"
         pdf_path = out_base / f"{prefix}.pdf"
-        json_path = out_base / f"{prefix}.json"
         diff_path = out_base / f"{prefix}.diff.md"
 
         # 5. Compile PDF and Enforce 1-Page Layout. Density fallback runs
@@ -604,9 +603,9 @@ class TailorEngine:
         # saved report.
         _apply_coverage(plan, evaluate_requirements(tailored_resume, jd_keywords))
 
-        # 5b. Bold matched keywords in the PDF (display-only pass). The JSON
-        # saved below uses the marker-free resume. Bold adds a hair of width,
-        # so verify the page budget and fall back to plain render on overflow.
+        # 5b. Bold matched keywords in the PDF (display-only pass). Bold adds
+        # a hair of width, so verify the page budget and fall back to plain
+        # render on overflow.
         highlighted = highlight_keywords(tailored_resume, plan.matched_keywords)
         hl_pages, hl_ms = self.compiler.compile(
             highlighted, pdf_path, self.config.max_pages
@@ -620,8 +619,7 @@ class TailorEngine:
         else:
             pages = hl_pages
 
-        # 6. Save JSON & Diff Markdown (after trimming so JSON matches the PDF)
-        json_path.write_text(tailored_resume.model_dump_json(indent=2), encoding="utf-8")
+        # 6. Save the readable diff report after trimming.
         diff_md = generate_diff_markdown(
             original=master_resume,
             tailored=tailored_resume,
@@ -644,7 +642,6 @@ class TailorEngine:
 
         return TailorResult(
             pdf_path=str(pdf_path.resolve()),
-            json_path=str(json_path.resolve()),
             diff_path=str(diff_path.resolve()),
             page_count=pages,
             llm_time_ms=llm_time_ms,

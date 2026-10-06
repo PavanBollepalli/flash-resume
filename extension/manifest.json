@@ -9,9 +9,6 @@
     "128": "icons/icon128.png"
   },
   "permissions": [
-    "activeTab",
-    "scripting",
-    "downloads",
     "storage"
   ],
   "host_permissions": [

@@ -91,6 +91,11 @@ ATS system would scan for, so a resume can be tailored to match. Split them into
 2. preferred_keywords - nice-to-haves or 'preferred qualifications'.
 
 Only include terms that genuinely appear or are clearly implied in the JD.
+Do not include the job title itself (for example, "Software Engineer (AI)")
+as a requirement. Treat slash/comma lists of technologies as one
+alternative requirement, not as a single literal phrase. Preserve meaningful
+compound requirements, but avoid generic filler such as "team player" or
+"fast-paced environment".
 Keep one atomic requirement per item, preserving the JD's wording where
 possible. Do not split a coordinated quality phrase such as "clean,
 maintainable, and reusable code" into three separately scored requirements;

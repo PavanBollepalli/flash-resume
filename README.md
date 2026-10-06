@@ -2,14 +2,16 @@
 
 # ⚡ Flash Resume
 
-**2-minute setup. One tap per application. Save 30+ minutes every single time.**
+### Evidence-led resume tailoring for applications that deserve more than a keyword dump.
 
-Turn any job post into a **truthful, ATS-targeted, verified 1-page PDF** — straight from the job page or your terminal.
+**2-minute setup. One focused workflow per application. More time applying, less time formatting.**
 
-[![PyPI version](https://img.shields.io/pypi/v/flash-resume?color=3b82f6&label=PyPI)](https://pypi.org/project/flash-resume/)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3b82f6?logo=python&logoColor=white)](https://www.python.org/)
-[![Platform](https://img.shields.io/badge/platform-Windows-60a5fa?logo=windows&logoColor=white)](#quick-start)
-[![GitHub](https://img.shields.io/badge/source-GitHub-3b82f6?logo=github&logoColor=white)](https://github.com/PavanBollepalli/flash-resume)
+Turn any job description into a **truthful, ATS-targeted, verified one-page PDF** — from your browser or terminal.
+
+[![PyPI](https://img.shields.io/pypi/v/flash-resume?color=3b82f6&label=PyPI)](https://pypi.org/project/flash-resume/)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows&logoColor=white)](#installation)
+[![Tests](https://img.shields.io/badge/tests-28%20passing-2ea44f)](#development)
 
 **Precision of a human rewrite. Speed of a keystroke. Zero hallucinated experience.**
 
@@ -17,278 +19,540 @@ Turn any job post into a **truthful, ATS-targeted, verified 1-page PDF** — str
 
 ---
 
-## 🚪 Why Flash Resume
+## Why Flash Resume
 
 Every serious application today is the same **3-tab shuffle**: job board → ChatGPT → LaTeX/Overleaf. Rewriting bullets by hand, pasting them back, compiling, and praying it still fits on **one page**. When it doesn't, you trim, recompile, pray again — and a recruiter would have auto-rejected the 2-page version anyway.
 
-That loop costs **15-30 minutes per application** — and full-document AI rewrites make it worse: they take 10+ seconds, hallucinate experience you don't have, and blow up your layout.
+That loop costs **15–30 minutes per application** — and full-document AI rewrites make it worse: they take 10+ seconds, hallucinate experience you don't have, and blow up your layout.
 
 **Flash Resume kills the loop.**
 
-| | Manual shuffle | Flash Resume |
-|---|---|---|
-| Time per application | 15-30 minutes | **~3 seconds** |
-| Keyword targeting | You guess | **AI maps JD → your real experience** |
-| Hallucinated skills | Common | **Impossible by design** (evidence-gated) |
-| Page-2 surprises | After you upload | **Never — fit is verified before save** |
-| Tabs needed | 3+ | **0** (one tap on the job page) |
+Instead of replacing your resume with a generic AI rewrite, Flash Resume:
 
-> [!TIP]
-> Set it up once (2 minutes). Every application after that is a **single tap** on a floating ⚡ button.
+- starts from your real master resume;
+- maps the JD to evidence you actually have;
+- makes small, reviewable role-specific edits; and
+- compiles and verifies the final one-page PDF before saving it.
+
+The result is a faster workflow without sacrificing credibility:
+
+> **Use AI to identify relevance. Use structured evidence to decide what can be claimed. Use a local compiler to prove the result fits.**
+
+| | Manual workflow | Flash Resume |
+|---|---|---|
+| Time per application | 15–30 minutes | **One focused workflow** |
+| Keyword targeting | You guess what to add | **JD mapped to your real evidence** |
+| Unsupported claims | Easy to introduce | **Blocked from normal tailoring** |
+| Layout risk | Discover page overflow after editing | **Compiled and page-checked before saving** |
+| Reviewability | Scattered edits across multiple tools | **PDF + readable diff report** |
+| Workflow | Job board → AI chat → document editor | **Select JD → click → review output** |
+
+## Why it is different
+
+| Concern | Flash Resume's approach |
+|---|---|
+| Speed | A local pipeline handles parsing, planning, compilation, and output generation. |
+| Accuracy | Tailoring is constrained by evidence extracted from your master resume. |
+| ATS relevance | Job requirements are normalized, split into alternatives/compound groups, and matched against resume evidence. |
+| Honesty | Unsupported claims stay unsupported in Truthful mode. |
+| Interview preparation | Interview mode can add closely related skills to a separate, clearly labeled **Familiarity** section. |
+| Layout | Typst compiles the resume and `pypdf` verifies the page count before the result is saved. |
+| Reviewability | Every application produces a PDF and a readable before/after diff. |
+| Privacy | The engine, master resume, API key, and generated files stay local. Only the job description you submit is sent to your selected AI provider. |
 
 ---
 
-## ✨ What it does
+## What it does
 
 | | |
 |---|---|
-| 🎯 **Targeted ATS diffing** | Injects high-density keywords from the job description directly into your existing skills and bullets — under a strict **±2-word budget** so nothing overflows. |
-| ⚡ **Near-instant or top-quality** | Pick **Groq** for a ~3s tailor, or **Gemini** for the absolute best ATS keyword quality (~5-9s). Switch anytime. |
-| 📄 **Verified 1-page PDF** | Local **Typst** compilation in <100ms, then `pypdf` inspects the output to guarantee a **true single-page fit** — no page-2 surprises, ever. |
-| 🧩 **1-click browser extension** | A blue ⚡ button floats on LinkedIn, Indeed, and Greenhouse. One tap → PDF saved to your folder. No download dialog, no copy-paste. |
-| 📥 **Import your existing resume** | `fs import` ingests your PDF, **recovers clickable links** hidden behind "GitHub"/"LinkedIn" placeholder text, strips garbled symbols, and groups your certifications — ready to tailor in seconds. |
-| 🔒 **100% truthful** | The engine only rephrases experience you actually have. Every edit is evidence-gated against your master resume — it *cannot* fabricate companies, degrees, metrics, or domains. |
-| 🪄 **Smart overflow recovery** | If a tailor would spill to page 2, the AI condenses exactly the spilled content first — keeping your strongest, metric-backed bullets instead of blindly chopping. |
+| 🎯 **Evidence-based ATS matching** | Maps job requirements to structured evidence from your master resume instead of treating every keyword as a qualification. |
+| ✍️ **Surgical tailoring** | Improves relevant skills and bullets without replacing your career history with a generic AI rewrite. |
+| 📄 **Verified one-page output** | Compiles with Typst and checks the generated PDF before it is saved. |
+| 🧩 **Selection-first browser workflow** | Select the JD text, click the blue or red Flash Resume button on the right edge, and let the local engine handle the rest. |
+| 📥 **Resume import** | Imports existing PDF, text, Markdown, or JSON resumes and recovers useful structured information such as links and certifications. |
+| 🔒 **Local-first design** | Your master resume and API key stay in the local engine; the extension is only a thin client. |
+| 🪄 **Overflow recovery** | Uses density fallback and targeted trimming to preserve a one-page result while protecting the strongest content. |
 
 ---
 
-## 🧭 How it works
+## What you get
 
-```
-┌─────────────┐   mirror keyword   ┌──────────────┐   compile    ┌──────────────────┐   verify    ┌───────────────┐
-│ Job post    │ ───────────────▶  │  Your master │ ──────────▶   │   Typst engine   │ ─────────▶  │ 1-page PDF +  │
-│  (JD text)  │   diff against    │    resume    │  (<0.1s)      │  (bundled, local) │  (pypdf)    │   review diff  │
-└─────────────┘                   └──────────────┘               └──────────────────┘              └───────────────┘
-        ▲                                                                                                  ▲
-        │                                                          AI keyword plan (Gemini / Groq)          │
-        │                                                                                                  │
-   clipboard / one-tap FAB / pasted text                                                            saved to your folder
+For each tailored application, Flash Resume can produce:
+
+```text
+Company_Role.pdf       # upload-ready resume
+Company_Role.diff.md   # reviewable changes and evidence report
 ```
 
-**The flow:**
+The report includes:
 
-1. **You get the JD** — copy it to your clipboard, or just tap the ⚡ button on a job page.
-2. **Flash Resume reads it** — auto-infers the target **company** and **role**.
-3. **The AI maps keywords** — two fast calls: one extracts the JD's ATS-critical keywords, one plans the edit. Every claim is then checked against your master resume — anything unsupported is dropped, not faked.
-4. **It patches, not rewrites** — surgically edits only 1-2 relevant bullets/skills, each within ±2 words of the original, so the layout can't move and ~80% fewer tokens are generated than a full AI rewrite.
-5. **It compiles & verifies** — builds the PDF locally in <100ms and checks the output is exactly **one page**.
-6. **You get everything** — `Company_Role.pdf`, a structured `.json`, and a `.diff.md` review report, plus a rich terminal diff showing exactly what changed.
+- target company and role;
+- evidence-based ATS coverage score;
+- covered, partial, and unsupported requirements;
+- the evidence used for each matched requirement;
+- applied bullet and skill changes;
+- familiarity skills, when Interview mode is enabled;
+- page count and compilation timings.
+
+The score is intentionally not a promise that an external ATS will accept an application. It is a transparent measure of how much of the extracted requirement set is supported by the resume you provided.
 
 ---
 
-## 🏗️ Architecture
+## Two modes, one standard of clarity
 
-**High level** — the extension is a thin client; all intelligence and configuration live in the local engine:
+### Truthful mode — blue
 
-```mermaid
-flowchart LR
-    subgraph Browser["Your browser (Chrome / Brave / Edge)"]
-        FAB["⚡ Floating button<br/>content.js"] -->|"one tap"| EXT["Extension<br/>popup.html"]
-    end
+The default mode. It can:
 
-    subgraph Local["Your machine — 127.0.0.1:13450"]
-        API["FastAPI companion daemon<br/>(fs serve)"] --> TAILOR["TailorEngine<br/>pipeline"]
-        TAILOR --> LLM{"AI provider"}
-        LLM -->|quality| GEM["Gemini Flash<br/>~5–9s"]
-        LLM -->|speed| GROQ["Groq gpt-oss-20b<br/>~3s"]
-        TAILOR --> TYPST["Typst compiler<br/><0.1s"] --> PYPDF["pypdf<br/>1-page verification"]
-        TYPST --> PDF["PDF + JSON + diff"]
-    end
+- preserve supported skills and experience;
+- highlight relevant evidence;
+- tailor wording around real projects, roles, certifications, and education;
+- add supported keywords where the master resume provides evidence.
 
-    EXT -->|fetch /api/tailor| API
-    FAB -->|fetch /api/tailor| API
-    PDF --> SAVE[("Your save folder")]
+It does **not** invent a framework, employer, degree, certification, metric, or production experience.
 
-    subgraph Config["Configuration & assets"]
-        CFG["config.json<br/>provider · key · save-folder"]
-        RES["Master resume"]
-        CFG -.->|read| API
-        RES -.->|read| TAILOR
-    end
+### Interview mode — red
+
+Interview mode is for a candidate who has a strong adjacent foundation and wants to signal professional familiarity with a closely related requirement.
+
+For example:
+
+```text
+Existing evidence: Python
+JD requirement:    FastAPI
+Possible output:   FastAPI (familiarity)
 ```
 
-**Key design decision:** your API key and master resume live **only** on the local server. The extension never sees them — it just POSTs the job description to `127.0.0.1:13450`. Nothing leaves your machine except the JD you choose to send to your AI provider.
+These additions are kept separate from normal experience and skills. They are not presented as production experience, and they are not silently merged into existing bullets.
 
-**Project layout:**
-
-```
-flash-resume/
-├── pyproject.toml               # Dependencies & fs scripts
-├── templates/
-│   └── resume.typ               # Modern, ATS-optimized Typst template
-├── extension/                   # Manifest V3 Chrome extension
-│   ├── manifest.json
-│   ├── popup.html / js          # Tailor UI + saved-path view
-│   ├── content.js               # Job extractor + one-tap ⚡ floating button
-│   └── icons/                   # "fr" toolbar icons (16/48/128)
-├── src/flash_resume/
-│   ├── cli.py                   # fs CLI (setup, init, import, tailor, serve, …)
-│   ├── config.py                # ~/.config/flash-resume/config.json
-│   ├── bootstrap.py             # Silent server entrypoint (pythonw -m …)
-│   ├── autostart.py             # Windows Run-key at-login registration
-│   ├── extension.py             # Bundled extension installer
-│   ├── models/                  # resume.py · job.py · tailoring.py
-│   ├── services/
-│   │   ├── compiler.py          # Typst + pypdf page validation
-│   │   ├── llm.py               # Gemini Flash provider
-│   │   ├── groq_llm.py          # Groq gpt-oss-20b fast provider
-│   │   ├── parser.py            # PDF import, hyperlink recovery, sanitization
-│   │   ├── tailor.py            # Pipeline orchestrator & diff generator
-│   │   ├── validator.py         # ±2-word / width-budget enforcement
-│   │   └── server.py            # FastAPI companion daemon
-│   └── utils/diff.py            # Rich terminal visualization
-├── examples/                    # Sample master resume + JD
-└── tests/                       # models · compiler · tailor · parser
-```
+Use this mode only for skills you are prepared to discuss honestly and learn enough to explain in an interview.
 
 ---
 
-## 🚀 Quick Start (Windows)
+## How the pipeline works
 
-### 1 · Install
+```text
+                    selected job description
+                              │
+                              ▼
+┌─────────────┐      ┌─────────────────┐      ┌──────────────────┐
+│ Browser or  │ ───▶ │ LLM plan        │ ───▶ │ Evidence matcher │
+│ CLI input   │      │ JD + edit plan  │      │ supported?       │
+└─────────────┘      └─────────────────┘      └────────┬─────────┘
+                                                       │
+                                                       ▼
+                                            ┌────────────────────┐
+                                            │ Surgical tailoring │
+                                            │ + familiarity gate │
+                                            └─────────┬──────────┘
+                                                      │
+                                                      ▼
+                                            ┌────────────────────┐
+                                            │ Typst compile      │
+                                            │ pypdf page check   │
+                                            └─────────┬──────────┘
+                                                      │
+                                                      ▼
+                                           PDF + diff report
+```
+
+1. You provide a job description.
+2. Flash Resume extracts the role, company, and ATS-relevant requirements.
+3. Gemini or Groq generates a structured tailoring plan.
+4. The deterministic evidence layer checks the plan against the master resume.
+5. Unsupported claims are removed from the normal resume path.
+6. Relevant edits and allowed familiarity items are applied.
+7. Typst compiles the document.
+8. The output is checked for page count and saved with a report.
+
+### Evidence matching is more than exact keyword search
+
+The matcher understands patterns such as:
+
+- alternatives: `Java/TypeScript/Python`;
+- comma-separated alternatives: `AWS, GCP, Azure`;
+- natural-language alternatives: `data pipelines or APIs`;
+- compound requirements: `supervised, unsupervised, and reinforcement learning`;
+- structured education: `B.Tech in Computer Science` versus `Bachelor's degree`;
+- related evidence rules for APIs, software design, algorithms, cloud platforms, analytics, and other common requirements;
+- partial credit when only part of a compound requirement is supported.
+
+It also filters job-title/context phrases so `Software Engineer (AI)` is not incorrectly treated as a technical skill requirement.
+
+---
+
+## Installation
+
+### Requirements
+
+- Windows for the background autostart integration;
+- Python 3.12 or newer;
+- a Gemini or Groq API key;
+- Chrome, Brave, or Edge for the browser extension.
+
+### Install from PyPI
 
 ```powershell
-pip install flash-resume
+py -m pip install flash-resume
 ```
 
-That's it — the package bundles **everything** (Typst engine, AI clients, extension files). No extra dependencies.
-
-### 2 · One-time setup (~2 minutes)
+### Run the setup wizard
 
 ```powershell
 fs setup
 ```
 
-A short interactive wizard that walks you through:
+The wizard configures:
 
-1. **AI provider** — Gemini (quality) or Groq (speed), plus your free API key
-2. **Save folder** — where tailored PDFs land
-3. **Master resume** — point it at your existing PDF (imported automatically, links and all) or build one from scratch
-4. **Autostart** — registers the engine to start silently at login, no terminal ever needed again
-5. **Extension** — copies the extension to a stable folder and prints where to load it
+1. AI provider and API key;
+2. output directory;
+3. master resume import or creation;
+4. Windows login autostart;
+5. the bundled browser extension.
 
-### 3 · Load the extension (once)
+`fs setup` registers the background engine and attempts to start it immediately. You do not need to leave a terminal open.
 
-1. Open `chrome://extensions/` (works in **Chrome, Brave, Edge**)
-2. Enable **Developer mode** (top-right toggle)
-3. Click **Load unpacked** and select the folder `fs setup` printed (default: `%LOCALAPPDATA%\flash-resume\extension`)
+### Load the extension once
 
-> [!NOTE]
-> When you use the floating ⚡ button, Chrome asks you to allow access to `localhost:13450` **once** — that's how the page-side button reaches the local engine. Grant it and you're done forever.
+1. Run:
 
-**That's it.** The engine autostarts at login and the extension reconnects automatically — no reloads, no terminal, no "keep this window open."
+   ```powershell
+   fs extension-path
+   ```
+
+2. Open `chrome://extensions/`.
+3. Turn on **Developer mode**.
+4. Choose **Load unpacked**.
+5. Select the folder printed by `fs extension-path`.
+
+After source or package updates, reload the extension from the Extensions page.
 
 ---
 
-## 🧑‍💻 Daily usage
+## Daily workflow
 
-### The one-tap way (fastest)
+### Fast browser workflow
 
-Open any job on **LinkedIn**, **Indeed**, or **Greenhouse** and **tap the ⚡ floating button** in the bottom-right corner. Flash Resume auto-detects the job, tailors, and shows a toast with your ATS score and saved path.
+1. Open a job page in Chrome, Brave, or Edge.
+2. Drag across the job description you want to use.
+3. Click the **Flash Resume button on the right edge of the page**.
+4. Flash Resume sends only the selected job description to the local engine.
+5. The engine tailors the resume and saves the PDF and reports to your configured folder.
 
-### The detailed way (review / retry)
+The button is:
 
-Open the popup and hit **"⚡ Tailor 1-Page Resume"** — company, role, and JD are auto-filled (including anything you've text-selected on the page).
+- **blue** in Truthful mode;
+- **red** in Interview mode.
 
-### Resume modes
+Open the extension popup to switch modes. The color change is synchronized between the popup and the page button.
 
-The extension has two explicit modes:
+The extension reads the page heading only when available to improve company and role naming. It does not send the whole page as the job description.
 
-* **Truthful** — the default. Only skills and experience supported by the master resume are integrated.
-* **Interview prep** — keeps the same evidence-based score and never adds a skill to experience, bullets, or normal skills. It can add a small number of closely related JD skills to a separate **Familiarity** section, with each item labeled `(familiarity)`. For example, an existing Python background may surface `FastAPI (familiarity)`. Review these items and build enough hands-on knowledge to discuss them accurately in an interview.
+### Terminal workflow
 
-### The terminal way (everywhere else)
-
-Copy the job description (`Ctrl+C`), then:
+Use the clipboard:
 
 ```powershell
 fs tailor
 ```
 
-Flash Resume reads the clipboard, infers the company/role, tailors, and drops three files in your save folder:
+Use a file:
 
-| File | What it is |
-|------|------------|
-| `Company_Role.pdf` | ✅ Ready to upload |
-| `Company_Role.json` | Structured tailored resume |
-| `Company_Role.diff.md` | Reviewable before/after report |
+```powershell
+fs tailor --jd .\jobs\backend-role.txt
+```
 
-…plus a rich terminal diff:
+Read from standard input:
+
+```powershell
+Get-Content .\jobs\backend-role.txt | fs tailor --jd -
+```
+
+Override inferred metadata:
+
+```powershell
+fs tailor `
+  --jd .\jobs\backend-role.txt `
+  --company "Example Labs" `
+  --role "Backend Software Engineer"
+```
+
+Override the output directory:
+
+```powershell
+fs tailor --jd .\jobs\backend-role.txt --out .\applications\example-labs
+```
+
+Typical completion output:
 
 ```text
 ✓ Flash Resume Tailoring Complete
-Datadog — Backend Software Engineer
-ATS Match Score: 94%  |  Pages: 1 page (Layout Verified)  |  Compile: 72.5ms  |  Total: 1.84s
+Example Labs — Backend Software Engineer
+ATS Match Score: 88%  |  Pages: 1 page (Layout Verified)
+Compile: 72.5ms  |  Total: 1.84s
 
-Integrated ATS Keywords:  FastAPI    PostgreSQL    Docker    Redis
+Integrated ATS Keywords:  FastAPI    PostgreSQL    Docker    REST APIs
 ```
 
-### Handy overrides
+---
+
+## CLI reference
+
+| Command | Purpose |
+|---|---|
+| `fs setup` | Configure provider, keys, output folder, master resume, autostart, and extension |
+| `fs init` | Create or edit a master resume |
+| `fs import` | Import an existing resume file and recover structured data |
+| `fs tailor` | Tailor a job description into a verified output set |
+| `fs serve` | Run the local FastAPI companion engine |
+| `fs doctor` | Check configuration, resume, provider, Typst, and output directory health |
+| `fs autostart status` | Show Windows login-start registration |
+| `fs autostart enable` | Register and start the background engine |
+| `fs autostart disable` | Remove the Windows login-start registration |
+| `fs extension-path` | Print and install the browser extension folder |
+| `fs --version` | Print the installed package version |
+
+### Health checks
 
 ```powershell
-# Tailor from a file or string instead of the clipboard
-fs tailor --jd ./jobs/datadog_swe.txt
-
-# Paste a long JD safely (quotes & apostrophes included)
-Get-Content ./jobs/joveo.txt | fs tailor --jd -
-cat ./jobs/joveo.txt | fs tailor --jd -          # Git Bash
-
-# Override company / role
-fs tailor --company "Google" --role "Site Reliability Engineer"
-
-# Custom output folder
-fs tailor --out ./applications/2026/
+fs doctor
+fs autostart status
+curl http://127.0.0.1:13450/api/status
 ```
 
----
-
-## 🛠️ CLI reference
-
-| Command | What it does |
-|---------|--------------|
-| `fs setup` | Interactive one-time configuration (provider, key, save folder, resume, autostart, extension) |
-| `fs init` | Create/edit your master resume |
-| `fs import` | Bring in an existing resume (PDF/text — recovers hidden links, cleans symbols, groups certs) |
-| `fs tailor` | Read JD → tailor → verified 1-page PDF (clipboard by default) |
-| `fs serve` | Run the local engine on `127.0.0.1:13450` (the extension needs it) |
-| `fs doctor` | Check that everything is healthy |
-| `fs autostart status` | Is the at-login autostart registered? |
-| `fs autostart enable` / `disable` | Turn the at-login engine on / off |
-| `fs extension-path` | Print the folder to load in `chrome://extensions` |
-| `fs --version` | Show version |
+The local status endpoint reports whether the engine is online, whether a master resume is configured, the active provider, and whether the relevant key is available.
 
 ---
 
-## 🛡️ Product principles
+## Importing an existing resume
 
-* **100% factual** — the engine only maps keywords and rephrases bullets that match your real experience. An evidence gate checks every AI suggestion against your master resume and drops anything unsupported. It never invents companies, degrees, metrics, or domains.
-* **Layout-preserving budgets** — every replacement bullet is constrained to ±2 words of the original, so the layout can't blow up.
-* **Sub-100ms local compilation** — pure local Typst, no external render queues.
-* **Local-first & private** — your key and resume never leave your machine except for the JD you choose to send your AI provider.
+You can start with an existing PDF instead of building a resume from zero:
+
+```powershell
+fs import .\resume.pdf
+```
+
+The import pipeline can:
+
+- extract visible PDF text;
+- recover hyperlinks hidden behind labels such as `GitHub` or `LinkedIn`;
+- clean common PDF extraction artifacts;
+- normalize the result into the structured master-resume model;
+- preserve education, experience, projects, certifications, and skills for later tailoring.
+
+Review the imported master resume before relying on it for applications. The quality of the evidence report is bounded by the quality of the source resume.
 
 ---
 
-## 🧪 Development
+## Privacy and security model
+
+Flash Resume is local-first:
+
+```text
+Browser extension ──local HTTP──▶ 127.0.0.1:13450
+                                      │
+                                      ├── master resume
+                                      ├── API key
+                                      ├── tailoring pipeline
+                                      └── generated files
+```
+
+- The extension does not contain your API key.
+- The extension does not store your master resume.
+- The local engine owns configuration and generated files.
+- The selected job description is sent to the AI provider you configure.
+- No hosted Flash Resume account is required for the local workflow.
+
+Treat generated resumes and job descriptions as sensitive application data. Use API keys with the provider whose data-handling policy matches your requirements.
+
+---
+
+## Architecture
+
+Flash Resume is a thin browser/CLI client wrapped around a local, evidence-aware resume engine.
+
+```mermaid
+flowchart LR
+    USER["Candidate"] --> BROWSER["Browser button<br/>select JD text"]
+    USER --> CLI["CLI<br/>clipboard / file / stdin"]
+
+    BROWSER --> API["Local FastAPI engine<br/>127.0.0.1:13450"]
+    CLI --> PIPELINE["TailorEngine"]
+    API --> PIPELINE
+
+    RESUME[("Master resume<br/>structured evidence")] --> PIPELINE
+    PIPELINE --> PLAN["LLM plan<br/>Gemini or Groq"]
+    PLAN --> GATE["Evidence gate<br/>covered · partial · unsupported"]
+    RESUME --> GATE
+    GATE --> EDITS["Sanitized edits<br/>Truthful or Interview mode"]
+    EDITS --> RENDER["Typst renderer"]
+    RENDER --> VERIFY["Page verification<br/>pypdf"]
+    VERIFY --> OUTPUT["PDF + diff report"]
+    OUTPUT --> FOLDER[("Configured output folder")]
+```
+
+### The important boundary
+
+The language model proposes relevance. It does not get the final say on what the resume can claim.
+
+```text
+LLM proposal
+     │
+     ▼
+Structured evidence matcher
+     │
+     ├── supported evidence ──▶ eligible for normal tailoring
+     ├── partial evidence   ──▶ partial score / cautious wording
+     └── no evidence        ──▶ excluded from normal claims
+```
+
+This separation is the core product decision:
+
+- **LLM layer:** extracts requirements and proposes a structured plan.
+- **Evidence layer:** deterministically checks requirements against the master resume.
+- **Tailor layer:** applies sanitized edits and keeps Interview-mode familiarity separate.
+- **Compiler layer:** renders the document and tries standard, compact, then tight density when needed.
+- **Verification layer:** checks the compiled PDF before it is saved.
+- **Extension layer:** remains thin; it collects selected text, stores the mode, and calls the local API.
+
+### Repository map
+
+```text
+flash-resume/
+├── extension/                  # Manifest V3 browser client
+│   ├── content.js              # Selection-first right-edge button
+│   ├── popup.html / popup.js   # Mode switcher and engine status
+│   └── icons/
+├── src/flash_resume/
+│   ├── cli.py                  # fs commands
+│   ├── config.py               # Local configuration
+│   ├── bootstrap.py            # Silent background entrypoint
+│   ├── autostart.py            # Windows login startup
+│   ├── extension.py            # Extension installation
+│   ├── models/                 # Resume, job, and tailoring schemas
+│   ├── services/
+│   │   ├── server.py           # FastAPI local API
+│   │   ├── tailor.py           # End-to-end orchestration
+│   │   ├── evidence.py         # Deterministic evidence matching
+│   │   ├── compiler.py         # Typst + page-count verification
+│   │   ├── validator.py        # Edit and layout constraints
+│   │   ├── parser.py           # Resume import and sanitization
+│   │   ├── llm.py              # Gemini provider
+│   │   └── groq_llm.py         # Groq provider
+│   └── utils/diff.py           # Terminal summaries
+├── templates/resume.typ        # ATS-friendly Typst template
+├── examples/                   # Sample inputs
+└── tests/                      # Regression and unit tests
+```
+
+### Local API
+
+The companion engine listens on:
+
+```text
+http://127.0.0.1:13450
+```
+
+Important endpoints:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/status` | Engine and configuration health |
+| `POST /api/tailor` | Tailor selected JD text |
+| `POST /api/config/key` | Persist Gemini key |
+| `POST /api/config/groq-key` | Persist Groq key |
+| `POST /api/config/provider` | Select provider |
+| `POST /api/config/output-dir` | Set output directory |
+
+The tailoring request accepts:
+
+```json
+{
+  "jd": "Selected job description text...",
+  "company": "Optional company heading",
+  "role": "Optional role heading",
+  "mode": "truthful"
+}
+```
+
+`mode` can be `truthful` or `interview_prep`.
+
+---
+
+## Development
+
+Clone and install the project:
 
 ```powershell
 git clone https://github.com/PavanBollepalli/flash-resume.git
 cd flash-resume
 uv sync
-uv run fs init
-uv run fs doctor
-uv run pytest
 ```
+
+Run checks:
+
+```powershell
+uv run pytest
+uv run fs doctor
+```
+
+Run the local engine:
+
+```powershell
+uv run fs serve
+```
+
+Validate the browser scripts:
+
+```powershell
+node --check .\extension\popup.js
+node --check .\extension\content.js
+```
+
+The project keeps the browser extension dependency-free and uses the Python package's bundled extension files when building a wheel.
+
+### Making a safe tailoring change
+
+When changing evidence or tailoring behavior:
+
+1. Add or update a focused test.
+2. Verify supported, partial, and unsupported cases.
+3. Confirm unsupported claims remain out of normal experience.
+4. Compile a representative resume and verify its page count.
+5. Regenerate the diff report and inspect the actual output.
 
 ---
 
-## 🙌 Contributing
+## Contributing
 
-Found a bug, want a new job-board parser, or a macOS/Linux heartbeat? Open an issue or a PR. Contributions of the "it still fits on one page" energy are especially welcome. ⚡
+Issues, improvements, new import formats, provider integrations, accessibility fixes, and layout work are welcome.
+
+Useful contributions include:
+
+- regression tests for evidence matching;
+- support for additional resume input formats;
+- better browser accessibility and keyboard interactions;
+- cross-platform background-service support;
+- improved Typst layout diagnostics;
+- transparent scoring improvements that do not inflate unsupported evidence.
+
+Before opening a pull request:
+
+```powershell
+uv run pytest
+node --check .\extension\popup.js
+node --check .\extension\content.js
+```
+
+Please describe behavior changes in the pull request and include an example of the evidence/report output when changing ATS logic.
 
 ---
 
 <div align="center">
 
-**Made for people who'd rather be applying than reformatting.** ⭐ Star it, fork it, take a job with it.
+### Spend less time formatting. Spend more time getting interviews.
+
+**Flash Resume — make every application specific, honest, and ready to send.**
 
 </div>
