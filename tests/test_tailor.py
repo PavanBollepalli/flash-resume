@@ -13,7 +13,11 @@ from flash_resume.services.tailor import (
     highlight_keywords,
     sanitize_tailor_plan,
 )
-from flash_resume.services.evidence import coverage_score, evaluate_requirements
+from flash_resume.services.evidence import (
+    align_resume_to_jd,
+    coverage_score,
+    evaluate_requirements,
+)
 from flash_resume.services.validator import validate_bullet_length
 
 
@@ -102,6 +106,33 @@ def test_evidence_map_intersects_jd_and_resume():
     assert "Python" in supported
     assert "FastAPI" in supported
     assert "LangChain" in unsupported
+
+
+def test_synonym_requirement_is_covered_and_aligns_bullet_to_jd_wording():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    resume.experience[0].bullets[0] = "Built services with PostgreSQL"
+    keywords = JDKeywords(required_keywords=["Postgres"])
+
+    assessment = evaluate_requirements(resume, keywords)
+    aligned = align_resume_to_jd(resume, assessment)
+
+    assert assessment[0].status == "covered"
+    assert assessment[0].match_method == "synonym"
+    assert aligned.experience[0].bullets[0] == "Built services with Postgres"
+
+
+def test_alignment_does_not_flatten_more_specific_resume_wording():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    resume.experience[0].bullets[0] = "Built services with Python 3.11"
+    keywords = JDKeywords(required_keywords=["Python"])
+
+    assessment = evaluate_requirements(resume, keywords)
+    aligned = align_resume_to_jd(resume, assessment)
+
+    assert assessment[0].status == "covered"
+    assert aligned.experience[0].bullets[0] == "Built services with Python 3.11"
 
 
 def test_apply_tailor_plan():
@@ -193,6 +224,64 @@ def test_generate_diff_markdown():
     assert "## Requirement Evidence Matrix" in diff_md
     assert "Kubernetes" in diff_md
     assert "64.2 ms" in diff_md
+
+
+def test_generate_diff_markdown_escapes_multiline_table_cells():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    plan = TailorPlan(
+        company="Company",
+        role="Backend Engineer",
+        bullet_edits=[
+            BulletEdit(
+                section="Experience",
+                item_id="exp",
+                bullet_index=0,
+                original_text="Used Python | SQL\nwith tests",
+                replacement_text="Used Python | SQL with integration tests",
+            )
+        ],
+    )
+
+    report = generate_diff_markdown(resume, resume, plan, 1, 10.0)
+    row = next(line for line in report.splitlines() if "integration tests" in line)
+
+    assert row.replace("\\|", "").count("|") == 5
+    assert "Python \\| SQL with tests" in row
+    assert "Python \\| SQL with integration tests" in row
+    assert "\n" not in row
+
+
+def test_sanitize_tailor_plan_reports_rejected_bullet_edit():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    original = resume.experience[0].bullets[0]
+    plan = TailorPlan(
+        bullet_edits=[
+            BulletEdit(
+                section="Experience",
+                item_id=resume.experience[0].id,
+                bullet_index=0,
+                original_text=original,
+                replacement_text="Invented Kubernetes platform leadership experience.",
+            )
+        ]
+    )
+
+    sanitized = sanitize_tailor_plan(
+        plan,
+        resume,
+        "Python Kubernetes",
+        jd_keywords=JDKeywords(required_keywords=["Python", "Kubernetes"]),
+    )
+
+    assert not sanitized.bullet_edits
+    assert len(sanitized.rejected_bullet_edits) == 1
+    assert "supported JD evidence" in sanitized.rejected_bullet_edits[0].reason
+
+    report = generate_diff_markdown(resume, resume, sanitized, 1, 10.0)
+    assert "## Rejected Bullet Points" in report
+    assert "Invented Kubernetes platform leadership experience." in report
 
 
 def test_evidence_map_with_llm_keywords_includes_terms_outside_static_list():
@@ -331,5 +420,3 @@ def test_highlight_keywords_merges_with_ingest_bold_markers():
     assert len(segments) % 2 == 1  # ends with plain text, i.e. balanced pairs
     for i in range(len(segments)):
         assert "**" not in segments[i]  # no double-wrapped segments
-
-

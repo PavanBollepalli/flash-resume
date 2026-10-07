@@ -45,13 +45,33 @@ STRICT PRINCIPLES & CONSTRAINTS:
    - CHARACTER BUDGET: The replacement MUST NOT exceed the total character length of the original bullet by more than 15 characters (watch out for long words that cause extra line wraps).
    - Do NOT lengthen bullets. Do NOT add extra sentences or clauses that wrap onto new lines.
 3. SURGICAL MODIFICATION ONLY:
+    - Treat the target role as the primary editing lens, not just a title label.
+      For a Backend Engineer role, prioritize bullets about APIs, services,
+      databases, integrations, reliability, testing, performance, and
+      deployment. For a Frontend role, prioritize UI, accessibility, state,
+      responsive design, and client-side performance. Apply the same principle
+      to other role families using the JD's actual responsibilities.
+    - When the master resume is an all-rounder resume, reframe its strongest
+      role-relevant evidence so the tailored version reads as a credible
+      candidate for the target role. Do not give equal space to unrelated
+      work when stronger target-role evidence exists.
     - Select up to 3 to 4 high-impact bullet points to rephrase using the JD's exact terminology.
     - Do not rewrite a bullet merely to produce an edit. Only modify it when the change adds JD keywords supported by the master resume and materially improves relevance for the job descreption given.
+    - A useful rewrite changes the emphasis of an existing accomplishment toward
+      the target role; it must not invent a new responsibility, tool, metric,
+      seniority level, or production claim.
     - Preserve relevant keywords already present in the original bullet. If a bullet already matches the JD adequately, return a BulletEdit with action 'skip'. Omitting that bullet edit is also valid.
    - Update Skills categories with supported exact terms.
+   - The JD keyword list is not decorative. Use it as the ranking signal:
+     required keywords come first, then supported preferred keywords, then
+     role responsibilities and domain language from the JD. Select bullets
+     and skills that provide evidence for the highest-priority supported
+     keywords. Do not spend an edit on a generic wording change when a
+     supported JD keyword still needs stronger placement.
 4. SUMMARY TAILORING (ALWAYS produce summary_edit):
    - Rewrite the candidate's professional summary to mirror the JD's language.
-   - Weave in the top 4-5 matched keywords naturally (do NOT keyword-stuff).
+   - Weave in the top 4-5 matched JD keywords naturally (do NOT
+     keyword-stuff), prioritizing required keywords over preferred ones.
    - Keep it to 2-3 punchy sentences, 30-40 words maximum.
      - Preserve the candidate's actual title/role. Never infer or calculate years of
          experience from dates, projects, open-source work, or graduation dates. Only
@@ -60,6 +80,9 @@ STRICT PRINCIPLES & CONSTRAINTS:
          "years of experience" or "years of production experience".
     - Do not use empty seniority or hype words such as "seasoned", "veteran", "expert", "highly skilled", or "passionate".
    - The summary_edit field MUST always be populated.
+   - Make the summary lead with the candidate's strongest evidence for the
+     target role. An all-rounder resume should not keep a generic all-rounder
+     positioning when the JD clearly targets a specific role.
 5. METADATA DETECTION:
    - Infer the target company name and job title from the JD text if not provided.
    - Do not estimate coverage: Flash Resume calculates the score locally from verified evidence.
@@ -318,6 +341,26 @@ OVERRIDES:
 Company: {company_override or "Infer from Job Description"}
 Role: {role_override or "Infer from Job Description"}
     Target role for summary: {role_override or infer_target_role(job_description) or "Infer from Job Description"}
+
+TARGETING OBJECTIVE:
+Make the final resume read as a focused candidate for the target role above,
+not as a generic all-rounder. Select and rewrite the candidate's strongest
+existing evidence for that role first. The target role is only the organizing
+frame; the extracted JD keywords and responsibilities determine the actual
+content priorities.
+
+Apply this order:
+1. Required JD keywords that are covered or partially covered by the resume.
+2. Preferred JD keywords that are covered or partially covered.
+3. Responsibilities and domain language from the JD that are supported by the
+   resume, such as API development, database work, testing, or deployment.
+4. General role framing only after the items above are represented.
+
+Use exact JD wording where the candidate has equivalent evidence. Map each
+rewrite to an existing skill, bullet, project technology, or accomplishment.
+Preserve unsupported JD keywords in missing_keywords; never insert them into
+the normal resume. Preserve unrelated evidence only when it supports a JD
+requirement or is needed for truthful context.
 """
 
         if jd_keywords and (jd_keywords.required_keywords or jd_keywords.preferred_keywords):
@@ -332,7 +375,12 @@ LOCAL EVIDENCE MAP:
 Supported terms present in the master resume: {", ".join(supported_terms or []) or "None"}
 JD terms not supported by the master resume: {", ".join(unsupported_terms or []) or "None"}
 
-Analyze the Job Description, extract core technical keywords, and generate a surgical, word-count-constrained TailorPlan.
+Before writing the TailorPlan, mentally rank each supported JD keyword by
+priority and identify which resume bullet or skill is the strongest evidence
+for it. The final plan must reflect that ranking: required supported keywords
+should appear in the most relevant skills, summary, or selected bullets when
+the word/character budget permits. Generate a surgical, word-count-constrained
+TailorPlan, not a generic title rewrite.
 """
         if interview_mode:
             prompt += (

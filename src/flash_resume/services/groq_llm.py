@@ -161,6 +161,14 @@ TARGET JOB DESCRIPTION:
 OVERRIDES:
 Company: {company_override or "Infer from Job Description"}
 Role: {role_override or "Infer from Job Description"}
+
+TARGETING OBJECTIVE:
+Make the final resume read as a focused candidate for the target role, not a
+generic all-rounder. The role is only the organizing frame; extracted JD
+keywords and responsibilities determine content priorities. Rank required
+supported keywords first, then supported preferred keywords, then supported
+responsibilities and domain language. Use exact JD wording where equivalent
+resume evidence exists, and keep unsupported terms out of the normal resume.
 """
 
         if jd_keywords and (jd_keywords.required_keywords or jd_keywords.preferred_keywords):
@@ -175,7 +183,11 @@ LOCAL EVIDENCE MAP:
 Supported terms present in the master resume: {", ".join(supported_terms or []) or "None"}
 JD terms not supported by the master resume: {", ".join(unsupported_terms or []) or "None"}
 
-Analyze the Job Description, extract core technical keywords, and generate a surgical, word-count-constrained TailorPlan.
+Identify the strongest resume evidence for each high-priority supported JD
+keyword before generating the plan. Required supported keywords should be
+represented in the most relevant skills, summary, or selected bullets when
+the word/character budget permits. Generate a surgical, word-count-constrained
+TailorPlan, not a generic title rewrite.
 Return ONLY the JSON object, no commentary.
 """
         if interview_mode:

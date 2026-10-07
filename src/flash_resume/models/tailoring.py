@@ -22,6 +22,18 @@ class BulletEdit(BaseModel):
     word_count_delta: int = Field(default=0, description="Difference in word count (new - original)")
 
 
+
+class RejectedBulletEdit(BaseModel):
+    """A model-proposed bullet edit rejected by deterministic safety gates."""
+
+    section: str
+    item_id: str
+    bullet_index: int
+    original_text: str
+    replacement_text: str
+    reason: str
+
+
 class SkillUpdate(BaseModel):
     """An update to a specific skills category."""
 
@@ -71,6 +83,10 @@ class TailorPlan(BaseModel):
     )
     skill_updates: List[SkillUpdate] = Field(default_factory=list, description="Skill section adjustments")
     bullet_edits: List[BulletEdit] = Field(default_factory=list, description="Targeted bullet point modifications")
+    rejected_bullet_edits: List[RejectedBulletEdit] = Field(
+        default_factory=list,
+        description="Bullet edits proposed by the model but rejected with an auditable reason",
+    )
     summary_edit: Optional[str] = Field(default=None, description="Optional tailored professional bio summary")
 
 

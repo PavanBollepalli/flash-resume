@@ -13,9 +13,21 @@ import pypdf
 
 from flash_resume.config import AppConfig
 from flash_resume.models.resume import MasterResume
-from flash_resume.models.tailoring import JDKeywords, RequirementMatch, TailorPlan, TailorResult
+from flash_resume.models.tailoring import (
+    JDKeywords,
+    RejectedBulletEdit,
+    RequirementMatch,
+    TailorPlan,
+    TailorResult,
+)
 from flash_resume.services.compiler import CompilerService
-from flash_resume.services.evidence import coverage_score, coverage_terms, evaluate_requirements
+from flash_resume.services.evidence import (
+    align_resume_to_jd,
+    coverage_score,
+    coverage_terms,
+    contains_term,
+    evaluate_requirements,
+)
 from flash_resume.services.llm import LLMService
 from flash_resume.services.validator import validate_bullet_length
 
@@ -234,17 +246,48 @@ def sanitize_tailor_plan(
             keyword for keyword in skill_update.added_keywords
             if keyword.casefold() in supported_lookup
         ]
-    sanitized.bullet_edits = [
-        edit
-        for edit in sanitized.bullet_edits
-        if edit.action != "skip"
-        and validate_bullet_length(edit.original_text, edit.replacement_text)[0]
-        and any(
-            term.casefold() in edit.replacement_text.casefold()
-            and term.casefold() not in edit.original_text.casefold()
-            for term in supported_terms
-        )
-    ]
+    accepted_edits = []
+    rejected_edits = list(sanitized.rejected_bullet_edits)
+    for edit in sanitized.bullet_edits:
+        reason = None
+        if edit.action == "skip":
+            reason = "Model marked this edit as skip."
+        elif not (
+            any(
+                contains_term(edit.replacement_text, term)
+                and not contains_term(edit.original_text, term)
+                for term in supported_terms
+            )
+            or (
+                any(contains_term(edit.original_text, term) for term in supported_terms)
+                and sum(
+                    contains_term(edit.replacement_text, term)
+                    for term in supported_terms
+                )
+                >= sum(
+                    contains_term(edit.original_text, term)
+                    for term in supported_terms
+                )
+            )
+        ):
+            reason = "Rejected because it did not preserve or add supported JD evidence."
+        elif not validate_bullet_length(edit.original_text, edit.replacement_text)[0]:
+            reason = "Rejected by the word/typographic-width safety budget."
+        if reason:
+            rejected_edits.append(
+                RejectedBulletEdit(
+                    section=edit.section,
+                    item_id=edit.item_id,
+                    bullet_index=edit.bullet_index,
+                    original_text=edit.original_text,
+                    replacement_text=edit.replacement_text,
+                    reason=reason,
+                )
+            )
+        else:
+            accepted_edits.append(edit)
+    sanitized.bullet_edits = accepted_edits
+    sanitized.rejected_bullet_edits = rejected_edits
     return sanitized
 
 
@@ -256,12 +299,18 @@ def generate_diff_markdown(
     compile_time_ms: float,
 ) -> str:
     """Generate a clean Markdown diff report of all modifications."""
+
+    def table_cell(value: str) -> str:
+        """Keep user/model text inside one valid Markdown table cell."""
+        return str(value).replace("\\", "\\\\").replace("|", "\\|").replace("\r", " ").replace("\n", " ").strip()
+
     lines = [
         f"# Flash Resume ATS Tailoring Report: {plan.company} - {plan.role}",
         "",
         f"- **Evidence-based ATS Score:** {plan.ats_match_score}%",
         f"- **Requirement Coverage:** {len([m for m in plan.requirement_matches if m.status == 'covered'])} covered, {len([m for m in plan.requirement_matches if m.status == 'partial'])} partial, {len(plan.missing_keywords)} unsupported ({len(plan.requirement_matches)} total)",
         f"- **Applied Bullet Edits:** {len(plan.bullet_edits)}",
+        f"- **Rejected Bullet Edits:** {len(plan.rejected_bullet_edits)}",
         f"- **Page Count:** {page_count} (Verified Single-Page Fit)",
         f"- **Typst Compile Latency:** {compile_time_ms:.1f} ms",
         f"- **Covered JD Requirements:** {', '.join(plan.matched_keywords) if plan.matched_keywords else 'None'}",
@@ -279,10 +328,10 @@ def generate_diff_markdown(
 
     matrix_rows = []
     for match in plan.requirement_matches:
-        evidence = "; ".join(match.evidence).replace("|", "\\|") if match.evidence else "—"
-        requirement = match.requirement.replace("|", "\\|")
+        evidence = "; ".join(match.evidence) if match.evidence else "—"
         matrix_rows.append(
-            f"| {match.priority} | {requirement} | {match.status} | {evidence} | {match.match_method} |"
+            f"| {table_cell(match.priority)} | {table_cell(match.requirement)} | "
+            f"{table_cell(match.status)} | {table_cell(evidence)} | {table_cell(match.match_method)} |"
         )
 
     modified_header_index = lines.index("## Modified Bullet Points")
@@ -294,7 +343,21 @@ def generate_diff_markdown(
         delta = new_words - orig_words
         sign = f"+{delta}" if delta > 0 else str(delta)
         lines.append(
-            f"| **{edit.section}** | {edit.original_text} | {edit.replacement_text} | `{sign}` words |"
+            f"| **{table_cell(edit.section)}** | {table_cell(edit.original_text)} | "
+            f"{table_cell(edit.replacement_text)} | `{table_cell(sign)}` words |"
+        )
+
+    lines.extend([
+        "",
+        "## Rejected Bullet Points",
+        "",
+        "| Section | Original Bullet | Proposed Rewrite | Reason |",
+        "| :--- | :--- | :--- | :--- |",
+    ])
+    for edit in plan.rejected_bullet_edits:
+        lines.append(
+            f"| **{table_cell(edit.section)}** | {table_cell(edit.original_text)} | "
+            f"{table_cell(edit.replacement_text)} | {table_cell(edit.reason)} |"
         )
 
     lines.extend([
@@ -577,6 +640,7 @@ class TailorEngine:
 
         # 3. Apply Plan to Clone
         tailored_resume = apply_tailor_plan(master_resume, plan)
+        tailored_resume = align_resume_to_jd(tailored_resume, initial_assessment)
 
         # 4. Resolve Output Paths
         out_base = Path(output_dir_override or self.config.output_dir)

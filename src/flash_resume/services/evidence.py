@@ -18,6 +18,20 @@ from flash_resume.models.tailoring import JDKeywords, RequirementMatch
 PREFERRED_WEIGHT = 0.35
 PARTIAL_CREDIT = 0.5
 
+# Only interchangeable surface forms belong here. These pairs let the
+# rendered resume mirror the JD without treating a broader capability as proof
+# of a narrower one.
+SYNONYM_GROUPS: tuple[tuple[str, ...], ...] = (
+    ("Postgres", "PostgreSQL"),
+    ("REST API", "REST APIs", "RESTful API", "RESTful APIs"),
+    ("Microsoft Office", "MS Office"),
+    ("AWS", "Amazon Web Services"),
+    ("GCP", "Google Cloud", "Google Cloud Platform"),
+    ("Kubernetes", "K8s"),
+    ("Node.js", "Node JS", "NodeJS"),
+    ("JavaScript", "JS"),
+    ("TypeScript", "TS"),
+)
 
 @dataclass(frozen=True)
 class EvidenceItem:
@@ -110,6 +124,70 @@ def normalize(text: str) -> str:
     value = re.sub(r"[^a-z0-9+#.]+", " ", value)
     value = re.sub(r"\s+", " ", value).strip()
     return value
+
+
+_SYNONYM_LOOKUP: dict[str, tuple[str, ...]] = {}
+for _group in SYNONYM_GROUPS:
+    for _term in _group:
+        _SYNONYM_LOOKUP[normalize(_term)] = _group
+
+
+def synonym_aliases(term: str) -> tuple[str, ...]:
+    """Return curated equivalent surface forms for a JD term."""
+    return _SYNONYM_LOOKUP.get(normalize(term), ())
+
+
+def contains_term(text: str, term: str) -> bool:
+    """Match a term as text, avoiding partial matches inside longer words."""
+    return re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text, re.IGNORECASE) is not None
+
+
+def _replace_term(text: str, source: str, target: str) -> str:
+    """Replace one curated synonym while preserving all surrounding text."""
+    return re.sub(
+        r"(?<!\w)" + re.escape(source) + r"(?!\w)",
+        target,
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
+def align_text_to_jd(text: str, jd_term: str) -> str:
+    """Use a JD's exact synonym wording without flattening extra detail."""
+    if not text or not jd_term or contains_term(text, jd_term):
+        return text
+    aliases = synonym_aliases(jd_term)
+    for alias in sorted(aliases, key=len, reverse=True):
+        if alias.casefold() != jd_term.casefold() and contains_term(text, alias):
+            return _replace_term(text, alias, jd_term)
+    return text
+
+
+def align_resume_to_jd(resume: MasterResume, assessments: list[RequirementMatch]) -> MasterResume:
+    """Align curated synonyms in skills and bullets to supported JD wording."""
+    aligned = resume.model_copy(deep=True)
+    terms = [
+        match.requirement
+        for match in assessments
+        if match.status in {"covered", "partial"} and synonym_aliases(match.requirement)
+    ]
+
+    for category in aligned.skills:
+        category.items = [
+            _align_text_terms(item, terms)
+            for item in category.items
+        ]
+    for experience in aligned.experience:
+        experience.bullets = [_align_text_terms(bullet, terms) for bullet in experience.bullets]
+    for project in aligned.projects:
+        project.bullets = [_align_text_terms(bullet, terms) for bullet in project.bullets]
+    return aligned
+
+
+def _align_text_terms(text: str, terms: list[str]) -> str:
+    for term in terms:
+        text = align_text_to_jd(text, term)
+    return text
 
 
 def _singular(value: str) -> str:
@@ -269,7 +347,14 @@ def _find_matches(aliases: Iterable[str], evidence: list[EvidenceItem]) -> list[
     found: list[EvidenceItem] = []
     for item in evidence:
         text = _singular(normalize(item.text))
-        if any(alias and alias in text for alias in normalized_aliases):
+        if any(
+            alias
+            and (
+                contains_term(text, alias)
+                or contains_term(text, alias + "s")
+            )
+            for alias in normalized_aliases
+        ):
             found.append(item)
     return found
 
@@ -283,6 +368,16 @@ def _evaluate_one(requirement: str, priority: str, evidence: list[EvidenceItem])
             status="covered", confidence=1.0, evidence=[item.text for item in exact[:3]],
             evidence_locations=[item.location for item in exact[:3]], match_method="exact",
             reason="The requirement appears directly in the candidate-authored resume.",
+        )
+
+    aliases = synonym_aliases(requirement)
+    synonym_matches = _find_matches(aliases, evidence) if aliases else []
+    if synonym_matches:
+        return RequirementMatch(
+            requirement=requirement, normalized_requirement=normalized, priority=priority,
+            status="covered", confidence=1.0, evidence=[item.text for item in synonym_matches[:3]],
+            evidence_locations=[item.location for item in synonym_matches[:3]], match_method="synonym",
+            reason="An equivalent curated technology name appears in the candidate-authored resume.",
         )
 
     compound = _compound_parts(requirement)
