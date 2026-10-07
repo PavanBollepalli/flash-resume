@@ -5,13 +5,24 @@ from pathlib import Path
 import pytest
 
 from flash_resume.models.resume import MasterResume
-from flash_resume.models.tailoring import BulletEdit, JDKeywords, SkillUpdate, TailorPlan
+from flash_resume.models.tailoring import (
+    BulletEdit,
+    BulletOrder,
+    CoreTailorPlan,
+    ContentPriority,
+    EvidenceAssignment,
+    JDKeywords,
+    ProjectTailorPlan,
+    SkillUpdate,
+    TailorPlan,
+)
 from flash_resume.services.tailor import (
     apply_tailor_plan,
     build_evidence_map,
     generate_diff_markdown,
     highlight_keywords,
     sanitize_tailor_plan,
+    generate_split_plan,
 )
 from flash_resume.services.evidence import (
     align_resume_to_jd,
@@ -72,6 +83,126 @@ def test_apply_tailor_plan_skips_explicit_skip_action():
     tailored = apply_tailor_plan(resume, plan)
 
     assert tailored.experience[0].bullets[0] == original_bullet
+
+
+def test_apply_tailor_plan_reorders_only_complete_bullet_permutations():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    item = resume.experience[0]
+    original = list(item.bullets)
+    plan = TailorPlan(
+        bullet_orders=[
+            BulletOrder(section="Experience", item_id=item.id, bullet_indices=list(reversed(range(len(original))))),
+            BulletOrder(section="Experience", item_id=item.id, bullet_indices=[0]),
+        ]
+    )
+
+    tailored = apply_tailor_plan(resume, plan)
+
+    assert tailored.experience[0].bullets == list(reversed(original))
+
+
+def test_role_aware_fields_are_reported():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    plan = TailorPlan(
+        content_priorities=[
+            ContentPriority(
+                section="Projects",
+                item_id="rag-project",
+                priority="high",
+                supported_keywords=["Python"],
+                reason="Direct backend evidence",
+            )
+        ],
+        evidence_assignments=[
+            EvidenceAssignment(
+                requirement="Python",
+                section="projects",
+                item_id="rag-project",
+                bullet_index=0,
+                strength="strong",
+            )
+        ],
+    )
+
+    report = generate_diff_markdown(resume, resume, plan, page_count=1, compile_time_ms=1.0)
+
+    assert "## Role-Focused Content Plan" in report
+    assert "## Evidence Assignments" in report
+
+
+def test_split_plan_merges_disjoint_core_and_project_outputs():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+
+    class FakeLLM:
+        def generate_core_tailor_plan(self, **kwargs):
+            return CoreTailorPlan(summary_edit="Backend-focused summary")
+
+        def generate_project_tailor_plan(self, **kwargs):
+            return ProjectTailorPlan(
+                content_priorities=[
+                    ContentPriority(
+                        section="Projects",
+                        item_id="proj_1",
+                        priority="high",
+                        reason="Strong backend evidence",
+                    )
+                ]
+            )
+
+        def generate_tailor_plan(self, **kwargs):
+            raise AssertionError("legacy fallback should not be used")
+
+    plan = generate_split_plan(
+        FakeLLM(), resume, "backend role", None, None, [], [], JDKeywords(), False
+    )
+
+    assert plan.summary_edit == "Backend-focused summary"
+    assert plan.content_priorities[0].item_id == "proj_1"
+
+
+def test_split_plan_falls_back_when_specialist_call_fails():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+
+    class FakeLLM:
+        def generate_core_tailor_plan(self, **kwargs):
+            raise RuntimeError("provider failure")
+
+        def generate_project_tailor_plan(self, **kwargs):
+            return ProjectTailorPlan()
+
+        def generate_tailor_plan(self, **kwargs):
+            return TailorPlan(summary_edit="Fallback summary")
+
+    plan = generate_split_plan(
+        FakeLLM(), resume, "backend role", None, None, [], [], JDKeywords(), False
+    )
+
+    assert plan.summary_edit == "Fallback summary"
+
+
+def test_split_plan_uses_safe_metadata_fallbacks():
+    class FakeLLM:
+        def generate_core_tailor_plan(self, **kwargs):
+            return CoreTailorPlan(company="Infer", role="Infer")
+
+        def generate_project_tailor_plan(self, **kwargs):
+            return ProjectTailorPlan()
+
+        def generate_tailor_plan(self, **kwargs):
+            raise AssertionError("legacy fallback should not be used")
+
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    plan = generate_split_plan(
+        FakeLLM(), resume, "backend role", None, None, [], [], JDKeywords(), False
+    )
+
+    assert plan.company == "Company"
+    assert plan.role == "Software Engineer"
 
 
 def test_evidence_gate_rejects_unsupported_skill_claim():
@@ -226,7 +357,7 @@ def test_generate_diff_markdown():
     assert "64.2 ms" in diff_md
 
 
-def test_generate_diff_markdown_escapes_multiline_table_cells():
+def test_generate_diff_markdown_keeps_multiline_values_in_tables():
     example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
     resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
     plan = TailorPlan(
@@ -244,12 +375,12 @@ def test_generate_diff_markdown_escapes_multiline_table_cells():
     )
 
     report = generate_diff_markdown(resume, resume, plan, 1, 10.0)
-    row = next(line for line in report.splitlines() if "integration tests" in line)
+    lines = report.splitlines()
 
-    assert row.replace("\\|", "").count("|") == 5
-    assert "Python \\| SQL with tests" in row
-    assert "Python \\| SQL with integration tests" in row
-    assert "\n" not in row
+    assert "| Section | Original | Tailored | Word Change |" in lines
+    assert any("Used Python \\| SQL with tests" in line for line in lines)
+    assert any("Used Python \\| SQL with integration tests" in line for line in lines)
+    assert "## Modified Bullet Points" in lines
 
 
 def test_sanitize_tailor_plan_reports_rejected_bullet_edit():
@@ -282,6 +413,232 @@ def test_sanitize_tailor_plan_reports_rejected_bullet_edit():
     report = generate_diff_markdown(resume, resume, sanitized, 1, 10.0)
     assert "## Rejected Bullet Points" in report
     assert "Invented Kubernetes platform leadership experience." in report
+
+
+def test_sanitize_tailor_plan_separates_skips_from_rejections():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    original = resume.experience[0].bullets[0]
+    plan = TailorPlan(
+        bullet_edits=[
+            BulletEdit(
+                action="skip",
+                section="Experience",
+                item_id=resume.experience[0].id,
+                bullet_index=0,
+                original_text=original,
+                replacement_text=original,
+            )
+        ]
+    )
+
+    sanitized = sanitize_tailor_plan(plan, resume, "Python", JDKeywords(required_keywords=["Python"]))
+
+    assert not sanitized.rejected_bullet_edits
+    assert len(sanitized.skipped_bullet_edits) == 1
+    report = generate_diff_markdown(resume, resume, sanitized, 1, 10.0)
+    assert "**Rejected Bullet Edits:** 0" in report
+    assert "**Skipped Bullet Edits:** 1" in report
+    assert "## Skipped Bullet Points" in report
+
+
+def test_sanitize_tailor_plan_rejects_generic_skill_and_fact_loss():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    original = "Reduced latency by 95% by optimizing the production pipeline."
+    resume.experience[0].bullets[0] = original
+    plan = TailorPlan(
+        skill_updates=[
+            SkillUpdate(
+                category="Backend",
+                original_items=["Python"],
+                updated_items=["Python", "backend stack"],
+                added_keywords=["backend stack"],
+            )
+        ],
+        bullet_edits=[
+            BulletEdit(
+                section="Experience",
+                item_id=resume.experience[0].id,
+                bullet_index=0,
+                original_text=original,
+                replacement_text="Built reliable backend services.",
+            )
+        ],
+    )
+
+    sanitized = sanitize_tailor_plan(
+        plan,
+        resume,
+        "Python backend stack",
+        JDKeywords(required_keywords=["Python", "backend stack"]),
+    )
+
+    assert "backend stack" not in sanitized.skill_updates[0].updated_items
+    assert not sanitized.bullet_edits
+    assert "concrete metric" in sanitized.rejected_bullet_edits[0].reason
+
+
+def test_sanitize_tailor_plan_allows_supported_phrase_expansion():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    original = (
+        "Authored reusable **Python** query modules with docstrings and **unit tests**, "
+        "eliminating repetitive ad-hoc analysis scripts used by the analytics team"
+    )
+    replacement = (
+        "Authored reusable **Python** query modules with docstrings and "
+        "**unit and integration tests**, eliminating repetitive ad-hoc analysis scripts "
+        "for the analytics team"
+    )
+    resume.experience[0].bullets[0] = original
+    plan = TailorPlan(
+        bullet_edits=[
+            BulletEdit(
+                section="Experience",
+                item_id=resume.experience[0].id,
+                bullet_index=0,
+                original_text=original,
+                replacement_text=replacement,
+            )
+        ]
+    )
+
+    sanitized = sanitize_tailor_plan(
+        plan,
+        resume,
+        "Python unit and integration tests",
+        JDKeywords(required_keywords=["Python", "unit and integration tests"]),
+    )
+
+    assert len(sanitized.bullet_edits) == 1
+    assert not sanitized.rejected_bullet_edits
+
+
+def test_sanitize_tailor_plan_allows_preserved_ci_outcome():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    original = (
+        "Shipped with PDF import, **unit tests**, and **GitHub Actions CI/CD** "
+        "that publishes to PyPI on version tags"
+    )
+    replacement = (
+        "Built robust **unit and integration tests** and **Git**-based "
+        "**GitHub Actions CI/CD** publishing to PyPI on version tags"
+    )
+    resume.projects[0].bullets[0] = original
+    plan = TailorPlan(
+        bullet_edits=[
+            BulletEdit(
+                section="Projects",
+                item_id=resume.projects[0].id,
+                bullet_index=0,
+                original_text=original,
+                replacement_text=replacement,
+            )
+        ]
+    )
+
+    sanitized = sanitize_tailor_plan(
+        plan,
+        resume,
+        "unit and integration tests Git GitHub Actions CI/CD",
+        JDKeywords(required_keywords=["unit and integration tests", "Git"]),
+    )
+
+    assert len(sanitized.bullet_edits) == 1
+
+
+def test_sanitize_tailor_plan_applies_reported_role_keyword_rewrites():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    experience_original = (
+        "Authored reusable **Python query modules** with docstrings and **unit tests**, "
+        "eliminating repetitive ad-hoc analysis scripts used by the analytics team"
+    )
+    project_original = (
+        "Shipped with PDF import, **unit tests**, and **GitHub Actions CI/CD** "
+        "that publishes to PyPI on version tags"
+    )
+    resume.experience[0].bullets[0] = experience_original
+    resume.projects[0].bullets[0] = project_original
+    plan = TailorPlan(
+        bullet_edits=[
+            BulletEdit(
+                section="Experience",
+                item_id=resume.experience[0].id,
+                bullet_index=0,
+                original_text=experience_original,
+                replacement_text=(
+                    "Authored robust **Python** modules with **unit and integration tests** "
+                    "and **REST** capabilities, eliminating ad-hoc analysis scripts"
+                ),
+            ),
+            BulletEdit(
+                section="Projects",
+                item_id=resume.projects[0].id,
+                bullet_index=0,
+                original_text=project_original,
+                replacement_text=(
+                    "Shipped with PDF import, **unit and integration tests**, and "
+                    "**Git** CI/CD pipelines that publish to PyPI on version tags"
+                ),
+            ),
+        ]
+    )
+
+    sanitized = sanitize_tailor_plan(
+        plan,
+        resume,
+        "Python REST unit and integration tests Git",
+        JDKeywords(
+            required_keywords=["Python", "REST", "unit and integration tests", "Git"]
+        ),
+    )
+
+    assert len(sanitized.bullet_edits) == 2
+    assert not sanitized.rejected_bullet_edits
+
+
+def test_sanitize_tailor_plan_deduplicates_evidence_assignments():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    plan = TailorPlan(
+        evidence_assignments=[
+            EvidenceAssignment(requirement="Python", section="skills", strength="strong"),
+            EvidenceAssignment(
+                requirement="Python",
+                section="experience",
+                item_id=resume.experience[0].id,
+                bullet_index=0,
+                strength="strong",
+            ),
+        ]
+    )
+
+    sanitized = sanitize_tailor_plan(plan, resume, "Python", JDKeywords(required_keywords=["Python"]))
+
+    assert len(sanitized.evidence_assignments) == 1
+
+
+def test_sanitize_tailor_plan_rejects_unsupported_summary_claim():
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+    plan = TailorPlan(
+        summary_edit=(
+            "Python engineer building AI agents and LLM-powered workflows with REST APIs."
+        )
+    )
+
+    sanitized = sanitize_tailor_plan(
+        plan,
+        resume,
+        "AI agents and LLM-powered workflows",
+        JDKeywords(required_keywords=["AI agents and LLM-powered workflows"]),
+    )
+
+    assert sanitized.summary_edit is None
+    assert sanitized.summary_edit_rejected_reason
 
 
 def test_evidence_map_with_llm_keywords_includes_terms_outside_static_list():

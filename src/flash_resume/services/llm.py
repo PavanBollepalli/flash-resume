@@ -12,7 +12,7 @@ from google.genai import types
 
 from flash_resume.models.job import JobAnalysis
 from flash_resume.models.resume import MasterResume
-from flash_resume.models.tailoring import JDKeywords, TailorPlan
+from flash_resume.models.tailoring import CoreTailorPlan, JDKeywords, ProjectTailorPlan, TailorPlan
 
 
 logger = logging.getLogger("flash_resume.llm")
@@ -68,6 +68,13 @@ STRICT PRINCIPLES & CONSTRAINTS:
      and skills that provide evidence for the highest-priority supported
      keywords. Do not spend an edit on a generic wording change when a
      supported JD keyword still needs stronger placement.
+   - Return content_priorities for every experience/project item. Rank the
+     strongest role-relevant items high without inventing evidence.
+   - Return evidence_assignments for important covered requirements, pointing
+     to the strongest concrete summary, skill, experience bullet, or project.
+   - Return bullet_orders only as complete permutations of existing bullets.
+     Put role-relevant and required-keyword evidence first; never drop or
+     duplicate a bullet.
 4. SUMMARY TAILORING (ALWAYS produce summary_edit):
    - Rewrite the candidate's professional summary to mirror the JD's language.
    - Weave in the top 4-5 matched JD keywords naturally (do NOT
@@ -127,6 +134,43 @@ similar framework" into multiple mandatory requirements; preserve the
 alternative as one item. Keep Required Skills in required_keywords and Good to
 Have / Preferred Skills in preferred_keywords.
 Output ONLY valid JSON matching the JDKeywords schema.
+"""
+
+
+def _split_prompt(
+    scope: str,
+    payload: dict,
+    job_description: str,
+    company_override: Optional[str],
+    role_override: Optional[str],
+    supported_terms: Optional[list[str]],
+    unsupported_terms: Optional[list[str]],
+    jd_keywords: Optional[JDKeywords],
+    output_instruction: str,
+) -> str:
+    """Build a compact prompt shared by the two specialist calls."""
+    required = ", ".join(jd_keywords.required_keywords) if jd_keywords else ""
+    preferred = ", ".join(jd_keywords.preferred_keywords) if jd_keywords else ""
+    return f"""Tailor only the {scope} of this resume for the target role.
+Use existing evidence only. Required supported terms have highest priority,
+then preferred supported terms, then supported responsibilities. Never invent
+tools, metrics, or experience. Keep bullet edits within the existing safety
+budget and use complete bullet permutations only.
+
+RESUME SCOPE:
+{json.dumps(payload, separators=(",", ":"))}
+
+JOB DESCRIPTION:
+{job_description}
+
+COMPANY: {company_override or "Infer"}
+ROLE: {role_override or "Infer"}
+REQUIRED JD TERMS: {required}
+PREFERRED JD TERMS: {preferred}
+SUPPORTED TERMS: {", ".join(supported_terms or [])}
+UNSUPPORTED TERMS: {", ".join(unsupported_terms or [])}
+
+{output_instruction}
 """
 
 
@@ -264,6 +308,65 @@ class LLMService:
                 )
             self._client = genai.Client(api_key=self.api_key)
         return self._client
+
+    def generate_core_tailor_plan(
+        self, resume: MasterResume, job_description: str,
+        company_override: Optional[str] = None, role_override: Optional[str] = None,
+        supported_terms: Optional[list[str]] = None, unsupported_terms: Optional[list[str]] = None,
+        jd_keywords: Optional[JDKeywords] = None, interview_mode: bool = False,
+    ) -> CoreTailorPlan:
+        payload = {
+            "summary": resume.summary,
+            "skills": [item.model_dump(mode="json") for item in resume.skills],
+            "experience": [item.model_dump(mode="json") for item in resume.experience],
+        }
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=_split_prompt(
+                "summary, skills, and experience", payload, job_description,
+                company_override, role_override, supported_terms, unsupported_terms,
+                jd_keywords,
+                "Return only the CoreTailorPlan JSON fields.",
+            ),
+            config=types.GenerateContentConfig(
+                system_instruction=TAILOR_SYSTEM_INSTRUCTION + (
+                    INTERVIEW_MODE_INSTRUCTION if interview_mode else ""
+                ),
+                response_mime_type="application/json",
+                response_schema=CoreTailorPlan,
+                max_output_tokens=2048,
+                temperature=0.2,
+            ),
+        )
+        if isinstance(response.parsed, CoreTailorPlan):
+            return response.parsed
+        return CoreTailorPlan.model_validate_json(response.text or "{}")
+
+    def generate_project_tailor_plan(
+        self, resume: MasterResume, job_description: str,
+        company_override: Optional[str] = None, role_override: Optional[str] = None,
+        supported_terms: Optional[list[str]] = None, unsupported_terms: Optional[list[str]] = None,
+        jd_keywords: Optional[JDKeywords] = None,
+    ) -> ProjectTailorPlan:
+        payload = {"projects": [item.model_dump(mode="json") for item in resume.projects]}
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=_split_prompt(
+                "projects", payload, job_description, company_override, role_override,
+                supported_terms, unsupported_terms, jd_keywords,
+                "Return only the ProjectTailorPlan JSON fields.",
+            ),
+            config=types.GenerateContentConfig(
+                system_instruction=TAILOR_SYSTEM_INSTRUCTION,
+                response_mime_type="application/json",
+                response_schema=ProjectTailorPlan,
+                max_output_tokens=2048,
+                temperature=0.2,
+            ),
+        )
+        if isinstance(response.parsed, ProjectTailorPlan):
+            return response.parsed
+        return ProjectTailorPlan.model_validate_json(response.text or "{}")
 
     def extract_jd_keywords(self, job_description: str) -> JDKeywords:
         """LLM call #1: extract ATS-relevant keywords from the job description.

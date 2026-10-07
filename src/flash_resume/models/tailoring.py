@@ -43,6 +43,56 @@ class SkillUpdate(BaseModel):
     added_keywords: List[str] = Field(default_factory=list, description="Keywords added to this category")
 
 
+class ContentPriority(BaseModel):
+    """Role relevance ranking for an experience entry or project."""
+
+    section: Literal["Experience", "Projects"]
+    item_id: str
+    priority: Literal["high", "medium", "low"]
+    supported_keywords: List[str] = Field(default_factory=list)
+    reason: str
+
+
+class EvidenceAssignment(BaseModel):
+    """Best concrete resume source for a supported JD requirement."""
+
+    requirement: str
+    section: Literal["summary", "skills", "experience", "projects"]
+    item_id: Optional[str] = None
+    bullet_index: Optional[int] = None
+    strength: Literal["strong", "moderate", "weak"]
+
+
+class BulletOrder(BaseModel):
+    """Requested display order for bullets within one resume item."""
+
+    section: Literal["Experience", "Projects"]
+    item_id: str
+    bullet_indices: List[int]
+
+
+class CoreTailorPlan(BaseModel):
+    """Partial plan for summary, skills, and professional experience."""
+
+    company: str = "Company"
+    role: str = "Software Engineer"
+    summary_edit: Optional[str] = None
+    skill_updates: List[SkillUpdate] = Field(default_factory=list)
+    experience_bullet_edits: List[BulletEdit] = Field(default_factory=list)
+    experience_bullet_orders: List[BulletOrder] = Field(default_factory=list)
+    evidence_assignments: List[EvidenceAssignment] = Field(default_factory=list)
+    preparation_skills: List[str] = Field(default_factory=list)
+
+
+class ProjectTailorPlan(BaseModel):
+    """Partial plan for project relevance, edits, and ordering."""
+
+    project_bullet_edits: List[BulletEdit] = Field(default_factory=list)
+    project_bullet_orders: List[BulletOrder] = Field(default_factory=list)
+    content_priorities: List[ContentPriority] = Field(default_factory=list)
+    evidence_assignments: List[EvidenceAssignment] = Field(default_factory=list)
+
+
 class RequirementMatch(BaseModel):
     """Auditable evidence assessment for one JD requirement."""
 
@@ -87,6 +137,14 @@ class TailorPlan(BaseModel):
         default_factory=list,
         description="Bullet edits proposed by the model but rejected with an auditable reason",
     )
+    skipped_bullet_edits: List[RejectedBulletEdit] = Field(
+        default_factory=list,
+        description="Bullet edits the model explicitly left unchanged",
+    )
+    summary_edit_rejected_reason: Optional[str] = None
+    content_priorities: List[ContentPriority] = Field(default_factory=list)
+    evidence_assignments: List[EvidenceAssignment] = Field(default_factory=list)
+    bullet_orders: List[BulletOrder] = Field(default_factory=list)
     summary_edit: Optional[str] = Field(default=None, description="Optional tailored professional bio summary")
 
 

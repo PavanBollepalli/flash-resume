@@ -68,6 +68,7 @@ The result is a faster workflow without sacrificing credibility:
 |---|---|
 | 🎯 **Evidence-based ATS matching** | Maps job requirements to structured evidence from your master resume instead of treating every keyword as a qualification. |
 | ✍️ **Surgical tailoring** | Improves relevant skills and bullets without replacing your career history with a generic AI rewrite. |
+| 🧭 **Role-focused organization** | Ranks relevant content, assigns supported JD requirements to concrete evidence, and safely places the strongest bullets first without deleting content. |
 | 📄 **Verified one-page output** | Compiles with Typst and checks the generated PDF before it is saved. |
 | 🧩 **Selection-first browser workflow** | Select the JD text, click the blue or red Flash Resume button on the right edge, and let the local engine handle the rest. |
 | 📥 **Resume import** | Imports existing PDF, text, Markdown, or JSON resumes and recovers useful structured information such as links and certifications. |
@@ -91,6 +92,7 @@ The report includes:
 - evidence-based ATS coverage score;
 - covered, partial, and unsupported requirements;
 - the evidence used for each matched requirement;
+- role-focused content priorities and evidence assignments;
 - applied bullet and skill changes;
 - familiarity skills, when Interview mode is enabled;
 - page count and compilation timings.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from concurrent.futures import ThreadPoolExecutor
 import logging
 import re
 import time
@@ -15,6 +16,9 @@ from flash_resume.config import AppConfig
 from flash_resume.models.resume import MasterResume
 from flash_resume.models.tailoring import (
     JDKeywords,
+    CoreTailorPlan,
+    ProjectTailorPlan,
+    EvidenceAssignment,
     RejectedBulletEdit,
     RequirementMatch,
     TailorPlan,
@@ -35,6 +39,74 @@ from flash_resume.services.validator import validate_bullet_length
 logger = logging.getLogger("flash_resume.tailor")
 
 
+def merge_split_plans(
+    core: CoreTailorPlan,
+    projects: ProjectTailorPlan,
+    company: Optional[str],
+    role: Optional[str],
+) -> TailorPlan:
+    """Merge disjoint specialist outputs into the existing full plan schema."""
+    inferred_company = company or core.company
+    if not inferred_company or inferred_company.casefold() in {"infer", "unknown", "n/a"}:
+        inferred_company = "Company"
+    inferred_role = role or core.role
+    if not inferred_role or inferred_role.casefold() in {"infer", "unknown", "n/a"}:
+        inferred_role = "Software Engineer"
+    return TailorPlan(
+        company=inferred_company,
+        role=inferred_role,
+        summary_edit=core.summary_edit,
+        skill_updates=core.skill_updates,
+        bullet_edits=core.experience_bullet_edits + projects.project_bullet_edits,
+        bullet_orders=core.experience_bullet_orders + projects.project_bullet_orders,
+        content_priorities=projects.content_priorities,
+        evidence_assignments=core.evidence_assignments + projects.evidence_assignments,
+        preparation_skills=core.preparation_skills,
+    )
+
+
+def generate_split_plan(
+    llm,
+    resume: MasterResume,
+    job_description: str,
+    company_override: Optional[str],
+    role_override: Optional[str],
+    supported_terms: list[str],
+    unsupported_terms: list[str],
+    jd_keywords: JDKeywords,
+    interview_mode: bool,
+) -> TailorPlan:
+    """Run specialist calls concurrently, falling back to the legacy call."""
+    required = {
+        "resume": resume,
+        "job_description": job_description,
+        "company_override": company_override,
+        "role_override": role_override,
+        "supported_terms": supported_terms,
+        "unsupported_terms": unsupported_terms,
+        "jd_keywords": jd_keywords,
+    }
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            core_future = pool.submit(
+                llm.generate_core_tailor_plan,
+                **required,
+                interview_mode=interview_mode,
+            )
+            project_future = pool.submit(llm.generate_project_tailor_plan, **required)
+            core = core_future.result()
+            projects = project_future.result()
+        return merge_split_plans(
+            core,
+            projects,
+            company_override or core.company,
+            role_override or core.role,
+        )
+    except Exception:
+        logger.exception("Split tailoring failed; using the legacy full-plan call.")
+        return llm.generate_tailor_plan(**required, interview_mode=interview_mode)
+
+
 EVIDENCE_TERMS = (
     "Python", "FastAPI", "REST API", "SQL", "PostgreSQL", "MySQL", "Docker", "Kubernetes",
     "AWS", "Google Cloud", "GCP", "Azure", "Azure OpenAI", "Azure Blob Storage", "Container Apps",
@@ -47,6 +119,58 @@ EVIDENCE_TERMS = (
     "pgvector", "Mistral", "ChromaDB", "O*NET", "data processing", "analytics pipelines",
     "object-oriented programming", "debugging", "unit tests", "Git/version control",
 )
+
+GENERIC_SKILL_TERMS = {
+    "backend stack",
+    "end-to-end backend stack",
+    "full-stack experience",
+    "technical skills",
+}
+OUTCOME_PATTERNS = (
+    r"\bachiev(?:e|es|ed|ing)\b",
+    r"\bautomat(?:e|es|ed|ing)\b",
+    r"\bdecreas(?:e|es|ed|ing)\b",
+    r"\beliminat(?:e|es|ed|ing)\b",
+    r"\bimprov(?:e|es|ed|ing)\b",
+    r"\bincreas(?:e|es|ed|ing)\b",
+    r"\boptimiz(?:e|es|ed|ing)\b",
+    r"\bpublish(?:e|es|ed|ing)\b",
+    r"\breduc(?:e|es|ed|ing)\b",
+    r"\bresolv(?:e|es|ed|ing)\b",
+    r"\bsav(?:e|es|ed|ing)\b",
+    r"\bshipp(?:e|s|ed|ing)\b",
+)
+
+
+def _protected_bullet_facts(text: str) -> set[str]:
+    """Return concrete facts that a rewrite must not silently remove."""
+    return set(re.findall(r"\b\d+(?:\.\d+)?%?\b", text.casefold()))
+
+
+def _preserves_bullet_facts(original: str, replacement: str) -> bool:
+    original_lower = original.casefold()
+    replacement_lower = replacement.casefold()
+    if not _protected_bullet_facts(original).issubset(_protected_bullet_facts(replacement)):
+        return False
+    original_outcomes = {
+        pattern for pattern in OUTCOME_PATTERNS if re.search(pattern, original_lower)
+    }
+    replacement_outcomes = {
+        pattern for pattern in OUTCOME_PATTERNS if re.search(pattern, replacement_lower)
+    }
+    return not original_outcomes or bool(original_outcomes & replacement_outcomes)
+
+
+def _within_bullet_budget(original: str, replacement: str) -> bool:
+    """Allow limited safe compaction when the rewrite preserves evidence."""
+    valid, word_delta, width_ratio = validate_bullet_length(original, replacement)
+    if valid:
+        return True
+    return (
+        word_delta >= -4
+        and 0.75 <= width_ratio <= 1.12
+        and _preserves_bullet_facts(original, replacement)
+    )
 
 
 def sanitize_filename(name: str) -> str:
@@ -100,11 +224,7 @@ def apply_tailor_plan(resume: MasterResume, plan: TailorPlan) -> MasterResume:
     for edit in plan.bullet_edits:
         if edit.action == "skip":
             continue
-        is_valid, word_delta, width_ratio = validate_bullet_length(
-            edit.original_text,
-            edit.replacement_text,
-        )
-        if not is_valid:
+        if not _within_bullet_budget(edit.original_text, edit.replacement_text):
             continue
         target_section = edit.section.strip().lower()
         if "exp" in target_section:
@@ -120,7 +240,19 @@ def apply_tailor_plan(resume: MasterResume, plan: TailorPlan) -> MasterResume:
                         proj.bullets[edit.bullet_index] = edit.replacement_text
                         break
 
-    # 3. Update Summary if provided
+    # 3. Reorder bullets only when the model supplies a complete, valid
+    # permutation. This preserves content and avoids accidental data loss.
+    for order in plan.bullet_orders:
+        target = None
+        if order.section == "Experience":
+            target = next((item for item in tailored.experience if item.id == order.item_id), None)
+        else:
+            target = next((item for item in tailored.projects if item.id == order.item_id), None)
+        if target is None or sorted(order.bullet_indices) != list(range(len(target.bullets))):
+            continue
+        target.bullets = [target.bullets[index] for index in order.bullet_indices]
+
+    # 4. Update Summary if provided
     if plan.summary_edit:
         tailored.summary = plan.summary_edit
 
@@ -236,22 +368,65 @@ def sanitize_tailor_plan(
         sanitized.preparation_skills = []
 
     _apply_coverage(sanitized, assessment)
+    if sanitized.summary_edit:
+        unsupported_summary_terms = []
+        for match in assessment:
+            if (
+                match.status != "covered"
+                and contains_term(sanitized.summary_edit, match.requirement)
+                and not contains_term(resume.summary, match.requirement)
+            ):
+                unsupported_summary_terms.append(match.requirement)
+        if unsupported_summary_terms:
+            sanitized.summary_edit = None
+            sanitized.summary_edit_rejected_reason = (
+                "Summary rejected because it introduced unsupported JD claims: "
+                + ", ".join(unsupported_summary_terms)
+            )
     for skill_update in sanitized.skill_updates:
         original_lookup = {original.casefold() for original in skill_update.original_items}
         skill_update.updated_items = [
             item for item in skill_update.updated_items
-            if item.casefold() in original_lookup or item.casefold() in resume_text
+            if (
+                item.casefold() in original_lookup
+                or item.casefold() in resume_text
+            ) and item.casefold() not in GENERIC_SKILL_TERMS
         ]
         skill_update.added_keywords = [
             keyword for keyword in skill_update.added_keywords
-            if keyword.casefold() in supported_lookup
+            if (
+                keyword.casefold() in supported_lookup
+                and keyword.casefold() not in GENERIC_SKILL_TERMS
+            )
         ]
     accepted_edits = []
     rejected_edits = list(sanitized.rejected_bullet_edits)
+    skipped_edits = list(sanitized.skipped_bullet_edits)
     for edit in sanitized.bullet_edits:
         reason = None
         if edit.action == "skip":
-            reason = "Model marked this edit as skip."
+            skipped_edits.append(
+                RejectedBulletEdit(
+                    section=edit.section,
+                    item_id=edit.item_id,
+                    bullet_index=edit.bullet_index,
+                    original_text=edit.original_text,
+                    replacement_text=edit.replacement_text,
+                    reason="Model marked this edit as skip.",
+                )
+            )
+            continue
+        target_items = resume.experience if "exp" in edit.section.casefold() else resume.projects
+        target = next((item for item in target_items if item.id == edit.item_id), None)
+        if (
+            target is None
+            or edit.bullet_index < 0
+            or edit.bullet_index >= len(target.bullets)
+            or target.bullets[edit.bullet_index] != edit.original_text
+        ):
+            reason = "Rejected because the target bullet did not match the master resume."
+        elif not _preserves_bullet_facts(edit.original_text, edit.replacement_text):
+            reason = "Rejected because it removed a concrete metric, highlighted fact, or outcome."
         elif not (
             any(
                 contains_term(edit.replacement_text, term)
@@ -271,7 +446,7 @@ def sanitize_tailor_plan(
             )
         ):
             reason = "Rejected because it did not preserve or add supported JD evidence."
-        elif not validate_bullet_length(edit.original_text, edit.replacement_text)[0]:
+        elif not _within_bullet_budget(edit.original_text, edit.replacement_text):
             reason = "Rejected by the word/typographic-width safety budget."
         if reason:
             rejected_edits.append(
@@ -288,6 +463,68 @@ def sanitize_tailor_plan(
             accepted_edits.append(edit)
     sanitized.bullet_edits = accepted_edits
     sanitized.rejected_bullet_edits = rejected_edits
+    sanitized.skipped_bullet_edits = skipped_edits
+    valid_experience = {item.id: item for item in resume.experience}
+    valid_projects = {item.id: item for item in resume.projects}
+    supported_lookup = {term.casefold() for term in supported_terms}
+    sanitized.content_priorities = [
+        priority
+        for priority in sanitized.content_priorities
+        if (
+            priority.section == "Experience" and priority.item_id in valid_experience
+        ) or (
+            priority.section == "Projects" and priority.item_id in valid_projects
+        )
+    ]
+    sanitized.content_priorities = [
+        priority.model_copy(
+            update={
+                "supported_keywords": [
+                    keyword for keyword in priority.supported_keywords
+                    if keyword.casefold() in supported_lookup
+                ]
+            }
+        )
+        for priority in sanitized.content_priorities
+    ]
+    valid_assignments = [
+        assignment
+        for assignment in sanitized.evidence_assignments
+        if (
+            assignment.section == "experience"
+            and assignment.item_id in valid_experience
+            and assignment.bullet_index is not None
+            and 0 <= assignment.bullet_index < len(valid_experience[assignment.item_id].bullets)
+        ) or (
+            assignment.section == "projects"
+            and assignment.item_id in valid_projects
+            and assignment.bullet_index is not None
+            and 0 <= assignment.bullet_index < len(valid_projects[assignment.item_id].bullets)
+        ) or assignment.section in {"summary", "skills"}
+    ]
+    sanitized.bullet_orders = [
+        order
+        for order in sanitized.bullet_orders
+        if (
+            order.section == "Experience"
+            and order.item_id in valid_experience
+            and sorted(order.bullet_indices) == list(range(len(valid_experience[order.item_id].bullets)))
+        ) or (
+            order.section == "Projects"
+            and order.item_id in valid_projects
+            and sorted(order.bullet_indices) == list(range(len(valid_projects[order.item_id].bullets)))
+        )
+    ]
+    # Keep one primary assignment per requirement and prefer the strongest
+    # source. This prevents parallel specialist calls from inflating the report.
+    strength_rank = {"strong": 0, "moderate": 1, "weak": 2}
+    deduped: dict[str, EvidenceAssignment] = {}
+    for assignment in valid_assignments:
+        key = assignment.requirement.casefold().strip()
+        current = deduped.get(key)
+        if current is None or strength_rank[assignment.strength] < strength_rank[current.strength]:
+            deduped[key] = assignment
+    sanitized.evidence_assignments = list(deduped.values())
     return sanitized
 
 
@@ -301,8 +538,15 @@ def generate_diff_markdown(
     """Generate a clean Markdown diff report of all modifications."""
 
     def table_cell(value: str) -> str:
-        """Keep user/model text inside one valid Markdown table cell."""
-        return str(value).replace("\\", "\\\\").replace("|", "\\|").replace("\r", " ").replace("\n", " ").strip()
+        """Keep each Markdown table row valid and readable in plain text."""
+        return (
+            str(value)
+            .replace("\\", "\\\\")
+            .replace("|", "\\|")
+            .replace("\r", " ")
+            .replace("\n", " ")
+            .strip()
+        )
 
     lines = [
         f"# Flash Resume ATS Tailoring Report: {plan.company} - {plan.role}",
@@ -311,6 +555,13 @@ def generate_diff_markdown(
         f"- **Requirement Coverage:** {len([m for m in plan.requirement_matches if m.status == 'covered'])} covered, {len([m for m in plan.requirement_matches if m.status == 'partial'])} partial, {len(plan.missing_keywords)} unsupported ({len(plan.requirement_matches)} total)",
         f"- **Applied Bullet Edits:** {len(plan.bullet_edits)}",
         f"- **Rejected Bullet Edits:** {len(plan.rejected_bullet_edits)}",
+        f"- **Skipped Bullet Edits:** {len(plan.skipped_bullet_edits)}",
+        *(
+            [f"- **Summary Edit:** Rejected — {clean_text(plan.summary_edit_rejected_reason)}"]
+            if plan.summary_edit_rejected_reason
+            else []
+        ),
+        f"- **Role Evidence Assignments:** {len(plan.evidence_assignments)}",
         f"- **Page Count:** {page_count} (Verified Single-Page Fit)",
         f"- **Typst Compile Latency:** {compile_time_ms:.1f} ms",
         f"- **Covered JD Requirements:** {', '.join(plan.matched_keywords) if plan.matched_keywords else 'None'}",
@@ -318,48 +569,91 @@ def generate_diff_markdown(
         "",
         "## Requirement Evidence Matrix",
         "",
-        "| Priority | JD Requirement | Status | Resume Evidence | Method |",
-        "| :--- | :--- | :--- | :--- | :--- |",
-        "## Modified Bullet Points",
-        "",
-        "| Section | Original Bullet | Tailored Bullet (ATS Optimized) | Word Δ |",
-        "| :--- | :--- | :--- | :--- |",
+        "| Priority | Requirement | Status | Method | Evidence |",
+        "| --- | --- | --- | --- | --- |",
     ]
 
-    matrix_rows = []
     for match in plan.requirement_matches:
         evidence = "; ".join(match.evidence) if match.evidence else "—"
-        matrix_rows.append(
+        lines.append(
             f"| {table_cell(match.priority)} | {table_cell(match.requirement)} | "
-            f"{table_cell(match.status)} | {table_cell(evidence)} | {table_cell(match.match_method)} |"
+            f"{table_cell(match.status)} | {table_cell(match.match_method)} | "
+            f"{table_cell(evidence)} |"
         )
 
-    modified_header_index = lines.index("## Modified Bullet Points")
-    lines[modified_header_index:modified_header_index] = matrix_rows + [""]
-
+    lines.extend([
+        "",
+        "## Modified Bullet Points",
+        "",
+        "| Section | Original | Tailored | Word Change |",
+        "| --- | --- | --- | --- |",
+    ])
     for edit in plan.bullet_edits:
         orig_words = len(edit.original_text.split())
         new_words = len(edit.replacement_text.split())
         delta = new_words - orig_words
         sign = f"+{delta}" if delta > 0 else str(delta)
         lines.append(
-            f"| **{table_cell(edit.section)}** | {table_cell(edit.original_text)} | "
-            f"{table_cell(edit.replacement_text)} | `{table_cell(sign)}` words |"
+            f"| {table_cell(edit.section)} | {table_cell(edit.original_text)} | "
+            f"{table_cell(edit.replacement_text)} | {table_cell(sign + ' words')} |"
         )
 
     lines.extend([
         "",
         "## Rejected Bullet Points",
         "",
-        "| Section | Original Bullet | Proposed Rewrite | Reason |",
-        "| :--- | :--- | :--- | :--- |",
+        "| Section | Original | Proposed Rewrite | Reason |",
+        "| --- | --- | --- | --- |",
     ])
     for edit in plan.rejected_bullet_edits:
         lines.append(
-            f"| **{table_cell(edit.section)}** | {table_cell(edit.original_text)} | "
+            f"| {table_cell(edit.section)} | {table_cell(edit.original_text)} | "
             f"{table_cell(edit.replacement_text)} | {table_cell(edit.reason)} |"
         )
 
+    lines.extend([
+        "",
+        "## Skipped Bullet Points",
+        "",
+        "| Section | Original | Reason |",
+        "| --- | --- | --- |",
+    ])
+    for edit in plan.skipped_bullet_edits:
+        lines.append(
+            f"| {table_cell(edit.section)} | {table_cell(edit.original_text)} | "
+            f"{table_cell(edit.reason)} |"
+        )
+    lines.extend([
+        "",
+        "## Role-Focused Content Plan",
+        "",
+        "| Section | Item | Priority | Supported Keywords | Reason |",
+        "| --- | --- | --- | --- | --- |",
+    ])
+    for priority in plan.content_priorities:
+        lines.append(
+            f"| {table_cell(priority.section)} | {table_cell(priority.item_id)} | "
+            f"{table_cell(priority.priority)} | "
+            f"{table_cell(', '.join(priority.supported_keywords) or '—')} | "
+            f"{table_cell(priority.reason)} |"
+        )
+    lines.extend([
+        "",
+        "## Evidence Assignments",
+        "",
+        "| Requirement | Source | Strength |",
+        "| --- | --- | --- |",
+    ])
+    for assignment in plan.evidence_assignments:
+        source = assignment.section
+        if assignment.item_id:
+            source += f": {assignment.item_id}"
+        if assignment.bullet_index is not None:
+            source += f" bullet {assignment.bullet_index + 1}"
+        lines.append(
+            f"| {table_cell(assignment.requirement)} | {table_cell(source)} | "
+            f"{table_cell(assignment.strength)} |"
+        )
     lines.extend([
         "",
         "## Skills Adjustments",
@@ -620,7 +914,8 @@ class TailorEngine:
         initial_assessment = evaluate_requirements(master_resume, jd_keywords)
         supported_terms, unsupported_terms = coverage_terms(initial_assessment)
         plan = sanitize_tailor_plan(
-            self.llm.generate_tailor_plan(
+            generate_split_plan(
+                llm=self.llm,
                 resume=master_resume,
                 job_description=job_description,
                 company_override=company_override,

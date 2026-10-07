@@ -16,7 +16,12 @@ from typing import Optional
 from openai import OpenAI
 
 from flash_resume.models.resume import MasterResume
-from flash_resume.models.tailoring import JDKeywords, TailorPlan
+from flash_resume.models.tailoring import (
+    CoreTailorPlan,
+    JDKeywords,
+    ProjectTailorPlan,
+    TailorPlan,
+)
 from flash_resume.services.llm import (
     CONDENSE_SYSTEM_INSTRUCTION,
     INTERVIEW_MODE_INSTRUCTION,
@@ -50,6 +55,79 @@ class GroqLLMService:
                 )
             self._client = OpenAI(api_key=self.api_key, base_url=GROQ_BASE_URL)
         return self._client
+
+    def _generate_split_plan(self, schema, payload: dict, job_description: str,
+                             company_override: Optional[str], role_override: Optional[str],
+                             supported_terms: Optional[list[str]], unsupported_terms: Optional[list[str]],
+                             jd_keywords: Optional[JDKeywords], instruction: str):
+        prompt = f"""Tailor only this resume scope for the target role.
+Use existing evidence only. Prioritize required supported JD terms, then
+preferred supported terms, then supported responsibilities. Never invent
+tools, metrics, or experience. {instruction}
+
+RESUME SCOPE:
+{json.dumps(payload, separators=(",", ":"))}
+
+JOB DESCRIPTION:
+{job_description}
+COMPANY: {company_override or "Infer"}
+ROLE: {role_override or "Infer"}
+REQUIRED TERMS: {", ".join(jd_keywords.required_keywords if jd_keywords else [])}
+PREFERRED TERMS: {", ".join(jd_keywords.preferred_keywords if jd_keywords else [])}
+SUPPORTED TERMS: {", ".join(supported_terms or [])}
+UNSUPPORTED TERMS: {", ".join(unsupported_terms or [])}
+Return only JSON matching the supplied schema."""
+        response = self.client.chat.completions.create(
+            model=self.model,
+            max_completion_tokens=4096,
+            reasoning_effort="low",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": TAILOR_SYSTEM_INSTRUCTION},
+                {"role": "system", "content": f"Schema:\n{json.dumps(schema.model_json_schema(), indent=2)}"},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        text = re.sub(r":\s*\+(\d+)", r": \1", (response.choices[0].message.content or "").strip())
+        if not text:
+            raise ValueError("Groq returned an empty split tailoring response.")
+        return schema.model_validate_json(text)
+
+    def generate_core_tailor_plan(
+        self, resume: MasterResume, job_description: str,
+        company_override: Optional[str] = None, role_override: Optional[str] = None,
+        supported_terms: Optional[list[str]] = None, unsupported_terms: Optional[list[str]] = None,
+        jd_keywords: Optional[JDKeywords] = None, interview_mode: bool = False,
+    ) -> CoreTailorPlan:
+        payload = {
+            "summary": resume.summary,
+            "skills": [item.model_dump(mode="json") for item in resume.skills],
+            "experience": [item.model_dump(mode="json") for item in resume.experience],
+        }
+        plan = self._generate_split_plan(
+            CoreTailorPlan, payload, job_description, company_override, role_override,
+            supported_terms, unsupported_terms, jd_keywords,
+            "Return summary_edit, skill_updates, experience_bullet_edits, "
+            "experience_bullet_orders, evidence_assignments, and preparation_skills.",
+        )
+        if not interview_mode:
+            plan.preparation_skills = []
+        return plan
+
+    def generate_project_tailor_plan(
+        self, resume: MasterResume, job_description: str,
+        company_override: Optional[str] = None, role_override: Optional[str] = None,
+        supported_terms: Optional[list[str]] = None, unsupported_terms: Optional[list[str]] = None,
+        jd_keywords: Optional[JDKeywords] = None,
+    ) -> ProjectTailorPlan:
+        return self._generate_split_plan(
+            ProjectTailorPlan,
+            {"projects": [item.model_dump(mode="json") for item in resume.projects]},
+            job_description, company_override, role_override, supported_terms,
+            unsupported_terms, jd_keywords,
+            "Return project_bullet_edits, project_bullet_orders, content_priorities, "
+            "and evidence_assignments.",
+        )
 
     def parse_resume_from_text(self, raw_text: str) -> MasterResume:
         """Parse raw resume text (from PDF or text) into a structured MasterResume.
@@ -169,6 +247,10 @@ keywords and responsibilities determine content priorities. Rank required
 supported keywords first, then supported preferred keywords, then supported
 responsibilities and domain language. Use exact JD wording where equivalent
 resume evidence exists, and keep unsupported terms out of the normal resume.
+Return content_priorities for every experience/project item,
+evidence_assignments for important covered requirements, and complete
+bullet_orders that place role-relevant evidence first without dropping or
+duplicating bullets.
 """
 
         if jd_keywords and (jd_keywords.required_keywords or jd_keywords.preferred_keywords):
