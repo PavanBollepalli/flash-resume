@@ -11,7 +11,7 @@ Turn any job description into a **truthful, ATS-targeted, verified one-page PDF*
 [![PyPI](https://img.shields.io/pypi/v/flash-resume?color=3b82f6&label=PyPI)](https://pypi.org/project/flash-resume/)
 [![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows&logoColor=white)](#installation)
-[![Tests](https://img.shields.io/badge/tests-28%20passing-2ea44f)](#development)
+[![Tests](https://img.shields.io/badge/tests-44%20passing-2ea44f)](#development)
 
 **Precision of a human rewrite. Speed of a keystroke. Zero hallucinated experience.**
 
@@ -97,6 +97,10 @@ The report includes:
 - familiarity skills, when Interview mode is enabled;
 - page count and compilation timings.
 
+The diff report uses compact Markdown tables with escaped text and one
+physical line per row, so it remains readable in Markdown viewers and Windows
+Notepad.
+
 The score is intentionally not a promise that an external ATS will accept an application. It is a transparent measure of how much of the extracted requirement set is supported by the resume you provided.
 
 ---
@@ -138,14 +142,20 @@ Use this mode only for skills you are prepared to discuss honestly and learn eno
                     selected job description
                               │
                               ▼
-┌─────────────┐      ┌─────────────────┐      ┌──────────────────┐
-│ Browser or  │ ───▶ │ LLM plan        │ ───▶ │ Evidence matcher │
-│ CLI input   │      │ JD + edit plan  │      │ supported?       │
-└─────────────┘      └─────────────────┘      └────────┬─────────┘
-                                                       │
-                                                       ▼
+┌─────────────┐      ┌─────────────────────────────┐
+│ Browser or  │ ───▶ │ JD extraction + local       │
+│ CLI input   │      │ evidence assessment         │
+└─────────────┘      └──────────────┬──────────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────────┐
+                         │ Parallel specialist LLM  │
+                         │ core + projects          │
+                         └────────────┬─────────────┘
+                                      │
+                                      ▼
                                             ┌────────────────────┐
-                                            │ Surgical tailoring │
+                                            │ Merge + sanitize   │
                                             │ + familiarity gate │
                                             └─────────┬──────────┘
                                                       │
@@ -161,12 +171,12 @@ Use this mode only for skills you are prepared to discuss honestly and learn eno
 
 1. You provide a job description.
 2. Flash Resume extracts the role, company, and ATS-relevant requirements.
-3. Gemini or Groq generates a structured tailoring plan.
-4. The deterministic evidence layer checks the plan against the master resume.
-5. Unsupported claims are removed from the normal resume path.
-6. Relevant edits and allowed familiarity items are applied.
+3. Gemini or Groq extracts the JD requirements and assesses existing evidence.
+4. Two focused tailoring calls run concurrently: one for summary, skills, and experience, and one for projects.
+5. The local merger validates IDs, evidence, bullet length, metrics, outcomes, and mode-specific rules.
+6. Unsupported claims are removed from the normal resume path; Interview mode keeps preparation skills separate.
 7. Typst compiles the document.
-8. The output is checked for page count and saved with a report.
+8. The output is checked for page count and saved with a report. If a specialist call fails, the legacy full-plan call is used as a fallback.
 
 ### Evidence matching is more than exact keyword search
 
@@ -457,6 +467,10 @@ flash-resume/
 ├── examples/                   # Sample inputs
 └── tests/                      # Regression and unit tests
 ```
+
+The tailoring service uses separate `CoreTailorPlan` and `ProjectTailorPlan`
+schemas, merges them into the backward-compatible `TailorPlan`, and applies
+deterministic validation before generating artifacts.
 
 ### Local API
 
