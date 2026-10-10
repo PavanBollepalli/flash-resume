@@ -33,6 +33,7 @@ from flash_resume.services.evidence import (
     evaluate_requirements,
 )
 from flash_resume.services.llm import LLMService
+from flash_resume.services.parser import _clean_text
 from flash_resume.services.validator import validate_bullet_length
 
 
@@ -557,7 +558,7 @@ def generate_diff_markdown(
         f"- **Rejected Bullet Edits:** {len(plan.rejected_bullet_edits)}",
         f"- **Skipped Bullet Edits:** {len(plan.skipped_bullet_edits)}",
         *(
-            [f"- **Summary Edit:** Rejected — {clean_text(plan.summary_edit_rejected_reason)}"]
+            [f"- **Summary Edit:** Rejected — {_clean_text(plan.summary_edit_rejected_reason)}"]
             if plan.summary_edit_rejected_reason
             else []
         ),
