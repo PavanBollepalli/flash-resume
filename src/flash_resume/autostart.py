@@ -34,16 +34,61 @@ def _require_windows() -> None:
         )
 
 
+def _pythonw_path() -> Path:
+    """Return the windowless interpreter to launch the boot module with.
+
+    Prefers the ``pythonw.exe`` sibling of the running interpreter so no
+    console window is shown.
+    """
+    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    return pythonw if pythonw.exists() else Path(sys.executable)
+
+
 def server_command() -> str:
     """Return the command line used to silently start the server at logon.
 
     Uses the ``pythonw.exe`` sibling of the running interpreter so no console
     window is shown, invoking the ``flash_resume.bootstrap`` boot module.
     """
-    pythonw = Path(sys.executable).with_name("pythonw.exe")
-    if not pythonw.exists():
-        pythonw = Path(sys.executable)
-    return f'"{pythonw}" -m flash_resume.bootstrap'
+    return f'"{_pythonw_path()}" -m flash_resume.bootstrap'
+
+
+def _verify_interpreter(exe: Path) -> None:
+    """Fail loudly if ``exe`` cannot import the server.
+
+    The Run key is pinned to whatever interpreter ran ``fs setup``. If that
+    interpreter is later deleted (a dev venv) or never had the package, the
+    logon entry dies silently with no console to explain why. Output is
+    piped, so even ``pythonw`` reports its traceback here.
+    """
+    try:
+        proc = subprocess.run(
+            [str(exe), "-c", "import flash_resume.services.server"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        raise RuntimeError(
+            f"The autostart interpreter could not be run: {exe}\n{e}"
+        ) from e
+
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(
+            f"{exe} cannot import Flash Resume, so the logon entry would fail "
+            f"silently:\n{detail[-800:]}"
+        )
+
+
+def engine_is_running(port: int = 13450) -> bool:
+    """Return True if something is already serving on the companion port."""
+    import socket
+
+    with socket.socket() as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
 
 
 def start_now() -> None:
@@ -53,9 +98,14 @@ def start_now() -> None:
     this separately so the extension can be used immediately.
     """
     _require_windows()
-    pythonw = Path(sys.executable).with_name("pythonw.exe")
-    if not pythonw.exists():
-        pythonw = Path(sys.executable)
+
+    from flash_resume.bootstrap import PORT
+
+    if engine_is_running(PORT):
+        logger.info("Companion server already listening on port %s", PORT)
+        return
+
+    pythonw = _pythonw_path()
 
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     creationflags |= getattr(subprocess, "DETACHED_PROCESS", 0)
@@ -76,6 +126,10 @@ def start_now() -> None:
 def install() -> str:
     """Register the autostart Run-key value and return the command string."""
     _require_windows()
+    # Check the command can actually run before pinning it into the Run key:
+    # a broken registration is invisible at logon, which is the whole failure
+    # mode this feature has to avoid.
+    _verify_interpreter(_pythonw_path())
     cmd = server_command()
     try:
         import winreg
