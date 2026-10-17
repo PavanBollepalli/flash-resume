@@ -20,6 +20,14 @@ function escapeHtml(value) {
   );
 }
 
+// Defensive ATS normalisation: never render null/missing as 0, clamp to 0–100.
+function normScore(v) {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  if (Number.isNaN(n)) return null;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
 // ---------------------------------------------------------------------------
 // Minimal markdown renderer (headings / lists / bold / code / pipe tables).
 // The diff report is a known, constrained format, so a small renderer keeps the
@@ -107,11 +115,13 @@ function renderMarkdown(md) {
 // ATS "signal" meter (~85+ strong, ~70 mid, else low; null → not scored)
 // ---------------------------------------------------------------------------
 function atsCell(score) {
-  if (score == null) {
-    return `<div class="ats na"><div class="top"><span class="num">–</span></div><div class="meter"><i style="width:0%"></i></div></div>`;
+  const n = normScore(score);
+  if (n == null) {
+    return `<div class="ats na" title="Not scored"><div class="ats-line"><span class="ats-num">–</span></div><div class="ats-meter"><i style="width:0%"></i></div></div>`;
   }
-  const cls = score >= 85 ? "hi" : score >= 70 ? "mid" : "lo";
-  return `<div class="ats ${cls}"><div class="top"><span class="num">${score}</span><span class="pct">%</span></div><div class="meter"><i style="width:${Math.min(100, score)}%"></i></div></div>`;
+  const cls = n >= 85 ? "hi" : n >= 70 ? "mid" : "lo";
+  const desc = n >= 85 ? "strong match" : n >= 70 ? "moderate match" : "needs improvement";
+  return `<div class="ats ${cls}" title="ATS signal ${n}/100 — ${desc}"><div class="ats-line"><span class="ats-num">${n}</span><span class="ats-unit">%</span></div><div class="ats-meter"><i style="width:${Math.min(100, n)}%"></i></div></div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -135,10 +145,21 @@ function renderStats(s) {
   setVal(".i-total .val", s.total ?? 0);
   setVal(".i-interview .val", s.interview ?? 0);
   setVal(".i-offered .val", s.offered ?? 0);
-  const avg = s.avg_ats;
-  setVal(".i-ats .val", avg == null ? "–" : avg);
-  const signal = el("stats").querySelector(".i-ats .signal i");
-  if (signal) signal.style.width = `${Math.min(100, avg ?? 0)}%`;
+
+  const avg = normScore(s.avg_ats);
+  const stat = el("stats").querySelector(".i-ats");
+  const avgEl = stat?.querySelector(".val");
+  const signal = stat?.querySelector(".signal i");
+  if (avgEl) avgEl.classList.remove("skeleton");
+  if (avg == null) {
+    if (avgEl) avgEl.textContent = "–";
+    if (stat) stat.setAttribute("data-level", "na");
+    if (signal) signal.style.width = "0%";
+  } else {
+    if (avgEl) avgEl.innerHTML = `${avg}<span class="u">%</span>`;
+    if (stat) stat.setAttribute("data-level", avg >= 85 ? "hi" : avg >= 70 ? "mid" : "lo");
+    if (signal) signal.style.width = `${Math.min(100, avg)}%`;
+  }
 }
 
 async function load() {
@@ -161,6 +182,9 @@ async function load() {
   }
 }
 
+const PDF_SVG = '<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M3.2 1.4h4L9.4 3.6v7H3.2z"/><path d="M7.2 1.4v2.2H9.4"/></svg>';
+const DIFF_SVG = '<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M2 1.8h3v8.4H2zM7 1.8h3v8.4H7z"/></svg>';
+
 function render(apps, total) {
   const rows = el("rows");
   const hasApps = apps.length > 0;
@@ -175,42 +199,46 @@ function render(apps, total) {
 
   // Build rows as an HTML string, then attach listeners to the result.
   rows.innerHTML = apps
-    .map(
-      (a) => `
+    .map((a) => {
+      const st = a.status || "applied";
+      return `
       <tr>
-        <td class="date">${escapeHtml(a.date)}</td>
-        <td>
-          <div class="company">${escapeHtml(a.company)}</div>
-          <small>${escapeHtml(a.mode)}</small>
-        </td>
-        <td class="role">${escapeHtml(a.role)}</td>
-        <td>${atsCell(a.ats_score)}</td>
-        <td>
-          <select class="status-select ${statusClass(a.status)}" data-id="${a.id}" name="status">
-            <option value="applied" ${a.status === "applied" ? "selected" : ""}>applied</option>
-            <option value="interview" ${a.status === "interview" ? "selected" : ""}>interview</option>
-            <option value="offered" ${a.status === "offered" ? "selected" : ""}>offered</option>
-          </select>
-        </td>
-        <td>
-          <div class="actions">
-            <a class="btn" href="${API_BASE}/api/resume/${a.id}" target="_blank" title="Open PDF in a new tab"><span class="ico">📄</span>PDF</a>
-            <button class="btn ghost" data-diff="${a.id}" data-file="${escapeHtml(a.filename)}" data-company="${escapeHtml(a.company)}" data-role="${escapeHtml(a.role)}" title="Render the diff report"><span class="ico">📝</span>Diff</button>
-          </div>
-        </td>
-      </tr>`
-    )
+        <td class="date" data-label="Date">${escapeHtml(a.date)}</td>
+        <td class="cell-company" data-label="Company"><div class="company">${escapeHtml(a.company)}</div><span class="company-sub">${escapeHtml(a.mode)}</span></td>
+        <td class="role cell-role" data-label="Role">${escapeHtml(a.role)}</td>
+        <td data-label="Signal">${atsCell(a.ats_score)}</td>
+        <td data-label="Status"><select class="status-select ${statusClass(st)}" data-id="${a.id}" name="status" aria-label="Status">
+          <option value="applied" ${st === "applied" ? "selected" : ""}>applied</option>
+          <option value="interview" ${st === "interview" ? "selected" : ""}>interview</option>
+          <option value="offered" ${st === "offered" ? "selected" : ""}>offered</option>
+        </select></td>
+        <td data-label="Artifacts"><div class="artifacts">
+          <a class="artifact" href="${API_BASE}/api/resume/${a.id}" target="_blank" title="Open PDF in a new tab">${PDF_SVG}PDF</a>
+          <button class="artifact" data-diff="${a.id}" data-file="${escapeHtml(a.filename)}" data-company="${escapeHtml(a.company)}" data-role="${escapeHtml(a.role)}" title="Render the diff report">${DIFF_SVG}Diff</button>
+        </div></td>
+      </tr>`;
+    })
     .join("");
 
   rows.querySelectorAll(".status-select").forEach((sel) => {
-    sel.addEventListener("change", async (e) => {
-      await fetch(`${API_BASE}/api/history/${sel.dataset.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: sel.value }),
-      });
-      sel.className = `status-select ${statusClass(sel.value)}`;
-      loadStats(); // pipeline overview reflects the new status
+    const original = sel.value;
+    sel.addEventListener("change", async () => {
+      const next = sel.value;
+      try {
+        const res = await fetch(`${API_BASE}/api/history/${sel.dataset.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: next }),
+        });
+        if (!res.ok) throw new Error("save failed");
+        sel.className = `status-select ${statusClass(next)}`;
+        loadStats(); // pipeline overview reflects the new status
+      } catch (err) {
+        // A failed save must NOT appear successful: revert the select and say so.
+        sel.value = original;
+        sel.className = `status-select ${statusClass(original)}`;
+        showToast("Couldn't update status — the local engine may be offline.", true);
+      }
     });
   });
 
@@ -223,6 +251,16 @@ function render(apps, total) {
   el("pageInfo").textContent = `Page ${state.page + 1} / ${pages}`;
   el("prev").disabled = state.page === 0;
   el("next").disabled = state.page + 1 >= pages;
+}
+
+let toastTimer;
+function showToast(msg, isError = false) {
+  const toast = el("toast");
+  toast.textContent = msg;
+  toast.classList.toggle("error", isError);
+  toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove("show"), 2600);
 }
 
 // ---------------------------------------------------------------------------

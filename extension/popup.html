@@ -1,378 +1,273 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Flash Resume</title>
-  <style>
-    :root {
-      /* Dark "ATS signal instrument" theme — shared naming with history.html */
-      --bg-top: #0A1220;
-      --bg-bottom: #0E1B33;
-      --card: #101D33;
-      --card-border: rgba(148, 163, 184, 0.16);
-      --card-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 8px 24px rgba(0,0,0,.45);
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flash Resume — Workbench</title>
+<style>
+/* ════════════════════════════════════════════════════════════════════════
+   FLASH RESUME — "The Resume Workbench" · expressive monochrome
+   Shared design tokens. Same language as history.html — the two surfaces are
+   one product. Green/amber/red appear ONLY for statuses and ATS categories.
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  color-scheme: dark light;
 
-      --primary: #22D3EE;       /* electric cyan — the "flash" */
-      --primary-soft: #38BDF8;
-      --primary-glow: rgba(34, 211, 238, 0.24);
+  --fr-bg: #0A0A0A;
+  --fr-surface: #151515;
+  --fr-surface-raised: #222222;
+  --fr-surface-hover: #1C1C1C;
 
-      --success: #4ADE80;
-      --success-bg: rgba(74, 222, 128, 0.12);
-      --success-border: rgba(74, 222, 128, 0.32);
-      --warn: #FACC15;
-      --danger: #FB7185;
-      --danger-bg: rgba(251, 113, 133, 0.12);
-      --danger-border: rgba(251, 113, 133, 0.3);
+  --fr-border: #414141;
+  --fr-border-subtle: #292929;
 
-      --text: #E6EDF7;
-      --text-muted: #93A6C2;
-      --text-faint: #5B6D8C;
-      --input-bg: #0C1730;
-      --radius: 14px;
+  --fr-text: #F0F0EB;
+  --fr-text-muted: #929292;
+  --fr-text-subtle: #686868;
 
-      --display: "Bahnschrift", "Segoe UI Variable", "Segoe UI", sans-serif;
-      --body: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-      --mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
-    }
+  --fr-accent: #F0F0EB;
+  --fr-accent-text: #0A0A0A;
+  --on-accent-muted: rgba(10,10,10,.62);
+  --on-accent-faint: rgba(10,10,10,.42);
 
-    body.interview-mode {
-      --primary: #FB7185;
-      --primary-soft: #F87171;
-      --primary-glow: rgba(251, 113, 133, 0.24);
-      --bg-top: #170B12;
-      --bg-bottom: #1E0F1B;
-    }
+  --fr-success: #34D399;
+  --fr-warning: #FBBF24;
+  --fr-danger: #FB7185;
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+  --fr-font: Inter, "Segoe UI", system-ui, sans-serif;
+  --fr-mono: "Cascadia Code", Consolas, monospace;
 
-    body {
-      width: 380px;
-      font-family: var(--body);
-      background:
-        radial-gradient(320px 160px at 82% -10%, rgba(34,211,238,.10), transparent 60%),
-        linear-gradient(165deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
-      color: var(--text);
-      padding: 16px;
-      font-size: 13px;
-      line-height: 1.5;
-      transition: background 0.45s ease, color 0.3s ease;
-    }
+  --fr-space-1: 4px;  --fr-space-2: 8px;  --fr-space-3: 12px;
+  --fr-space-4: 16px; --fr-space-5: 24px; --fr-space-6: 32px; --fr-space-7: 48px;
 
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 14px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--card-border);
-    }
+  --fr-radius-control: 5px;
+  --fr-radius-card: 8px;
+  --fr-transition: 140ms ease;
+}
 
-    .brand { display: flex; align-items: center; gap: 9px; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+button, input, select { font-family: var(--fr-font); }
+:focus-visible { outline: 2px solid var(--fr-text); outline-offset: 2px; border-radius: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
 
-    .brand-logo {
-      font-size: 17px;
-      width: 30px; height: 30px;
-      display: flex; align-items: center; justify-content: center;
-      border-radius: 9px;
-      background: linear-gradient(135deg, var(--primary), var(--primary-soft));
-      box-shadow: 0 4px 14px var(--primary-glow);
-    }
+body {
+  width: 380px; background: var(--fr-bg); color: var(--fr-text);
+  padding: var(--fr-space-4); font-size: 13px; line-height: 1.5;
+  transition: background var(--fr-transition), color var(--fr-transition);
+}
+body.interview-mode {
+  --fr-bg: #FFFFFF;
+  --fr-surface: #F5F5F5;
+  --fr-surface-raised: #EBEBEB;
+  --fr-surface-hover: #F0F0F0;
+  --fr-border: #BEBEBE;
+  --fr-border-subtle: #E6E6E6;
+  --fr-text: #0A0A0A;
+  --fr-text-muted: #5A5A5A;
+  --fr-text-subtle: #8A8A8A;
+  --fr-accent: #0A0A0A;
+  --fr-accent-text: #FFFFFF;
+  --on-accent-muted: rgba(255,255,255,.68);
+  --on-accent-faint: rgba(255,255,255,.45);
+  /* Semantic status colors, deepened for contrast on the white surface. */
+  --fr-success: #067647;
+  --fr-warning: #B45309;
+  --fr-danger: #D6455B;
+  background: var(--fr-bg); color: var(--fr-text);
+  color-scheme: light;
+}
+main, .pop-section { display: block; }
 
-    .brand h1 {
-      font-family: var(--display);
-      font-size: 15px; font-weight: 800; letter-spacing: -0.02em;
-      color: var(--primary);
-    }
+/* Masthead */
+.masthead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.brand { display: flex; gap: 11px; align-items: flex-start; min-width: 0; flex: 0 0 auto; }
+.brand-mark { flex: 0 0 auto; margin-top: 4px; }
+.brand > div { min-width: 0; overflow: hidden; }
+.brand h1 { font-size: 26px; font-weight: 800; letter-spacing: -.03em; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand-tag { margin-top: 5px; font: 500 9.5px var(--fr-mono); letter-spacing: .22em; color: var(--fr-text-subtle); }
+.status-badge {
+  flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 6px;
+  font: 600 10px var(--fr-mono); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--fr-text-muted); padding: 5px 9px; margin-top: 2px;
+  border: 1px solid var(--fr-border-subtle); border-radius: 999px;
+  max-width: 150px; white-space: nowrap;
+}
+.status-badge #statusText { overflow: hidden; text-overflow: ellipsis; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fr-success); animation: fr-blink 2.2s ease-in-out infinite; }
+.status-badge.offline { color: var(--fr-danger); border-color: rgba(251,113,133,.35); }
+.status-badge.offline .dot { background: var(--fr-danger); animation: none; }
+@keyframes fr-blink { 50% { opacity: .35; } }
 
-    .header-actions { display: flex; align-items: center; gap: 8px; }
+.masthead-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.guide-btn {
+  width: 26px; height: 26px; display: grid; place-items: center; margin-top: 2px;
+  border: 1px solid var(--fr-border-subtle); border-radius: var(--fr-radius-control);
+  background: transparent; color: var(--fr-text-subtle); font: 600 13px var(--fr-font);
+  cursor: pointer; transition: color var(--fr-transition), border-color var(--fr-transition);
+}
+.guide-btn:hover { color: var(--fr-text); border-color: var(--fr-border); }
 
-    .icon-btn {
-      background: var(--input-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      width: 28px; height: 28px;
-      display: inline-flex; align-items: center; justify-content: center;
-      cursor: pointer; font-size: 13px; font-weight: 700;
-      color: var(--text-muted);
-      transition: all 0.15s;
-    }
+.rule { border: none; border-top: 1px solid var(--fr-border-subtle); margin: var(--fr-space-4) 0; }
 
-    .icon-btn:hover {
-      background: var(--primary-glow);
-      border-color: var(--primary);
-      color: var(--primary);
-    }
+/* Notices */
+.notice {
+  border: 1px solid var(--fr-border-subtle); border-radius: var(--fr-radius-card);
+  padding: 10px 12px; font-size: 11.5px; color: var(--fr-text-muted);
+  margin-bottom: var(--fr-space-4); line-height: 1.55;
+}
+.notice code { font-family: var(--fr-mono); font-size: 11px; background: var(--fr-surface-raised); padding: 1px 5px; border-radius: 4px; color: var(--fr-text); }
+.notice-danger { border-color: rgba(251,113,133,.35); color: var(--fr-danger); }
 
-    .status-badge {
-      display: flex; align-items: center; gap: 6px;
-      font-family: var(--mono);
-      font-size: 10.5px; font-weight: 700; letter-spacing: .02em;
-      padding: 4px 9px; border-radius: 999px;
-      background: var(--success-bg); color: var(--success);
-      border: 1px solid var(--success-border);
-    }
+/* Section headers */
+.section-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.section-label { font: 600 10px var(--fr-mono); letter-spacing: .16em; text-transform: uppercase; color: var(--fr-text-subtle); }
+.link-btn { background: none; border: none; color: var(--fr-text-muted); font: 600 11px var(--fr-font); cursor: pointer; padding: 2px 0; }
+.link-btn:hover { color: var(--fr-text); }
 
-    .status-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--success);
-      animation: pulse 2s infinite;
-      box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
-    }
+/* Mode selection — stacked, inverted-off-white active state */
+.mode-input-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.mode-list { display: flex; flex-direction: column; gap: 8px; }
+.mode-option {
+  display: flex; align-items: flex-start; gap: 11px; text-align: left;
+  padding: 12px 14px; border-radius: var(--fr-radius-card);
+  border: 1px solid var(--fr-border); background: transparent; color: var(--fr-text);
+  cursor: pointer; transition: background var(--fr-transition), border-color var(--fr-transition), color var(--fr-transition);
+}
+.mode-option:hover { background: var(--fr-surface-hover); }
+.mode-option.active { background: var(--fr-accent); border-color: var(--fr-accent); color: var(--fr-accent-text); }
+.mode-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--fr-text-muted); margin-top: 4px; }
+.mode-option.active .mode-dot { border-color: var(--fr-accent-text); background: var(--fr-accent-text); }
+.mode-body { flex: 1; min-width: 0; }
+.mode-name { display: block; font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
+.mode-copy { display: block; margin-top: 2px; font-size: 11px; color: var(--fr-text-muted); line-height: 1.35; }
+.mode-option.active .mode-copy { color: var(--on-accent-muted); }
+.mode-key { font: 500 10px var(--fr-mono); color: var(--fr-text-subtle); margin-top: 3px; }
+.mode-option.active .mode-key { color: var(--on-accent-faint); }
+.mode-description { margin-top: 10px; font-size: 11.5px; color: var(--fr-text-muted); line-height: 1.45; }
+.mode-description::before { content: "—"; color: var(--fr-text-subtle); margin-right: 7px; }
 
-    .status-badge.offline {
-      background: var(--danger-bg); color: var(--danger);
-      border-color: var(--danger-border);
-    }
+/* Recent application rows */
+.app-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--fr-border-subtle); }
+.app-row:first-child { border-top: none; padding-top: 2px; }
+.app-main { flex: 1; min-width: 0; }
+.app-company { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-meta { font-size: 10.5px; color: var(--fr-text-muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-meta .mono { font-family: var(--fr-mono); color: var(--fr-text-subtle); }
+.app-score { font: 600 12px var(--fr-mono); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.app-score.hi { color: var(--fr-success); } .app-score.mid { color: var(--fr-warning); }
+.app-score.lo { color: var(--fr-danger); }  .app-score.na { color: var(--fr-text-subtle); }
+.app-pdf {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--fr-border-subtle); border-radius: var(--fr-radius-control);
+  padding: 5px 8px; color: var(--fr-text-muted); font: 600 10.5px var(--fr-font); text-decoration: none;
+  transition: color var(--fr-transition), border-color var(--fr-transition), background var(--fr-transition);
+}
+.app-pdf:hover { color: var(--fr-text); border-color: var(--fr-border); background: var(--fr-surface-hover); }
+.list-note { padding: 8px 0; font-size: 11.5px; color: var(--fr-text-muted); line-height: 1.5; }
+.sk { display: block; height: 11px; border-radius: 3px; background: var(--fr-surface-raised); animation: fr-pulse 1.3s ease-in-out infinite; }
+@keyframes fr-pulse { 50% { opacity: .45; } }
 
-    .status-badge.offline .status-dot {
-      background: var(--danger);
-      box-shadow: 0 0 8px rgba(251, 113, 133, 0.6);
-      animation: none;
-    }
+/* Setup card — a notice, not a glowing card */
+.setup-card { display: none; }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.55; transform: scale(0.82); }
-    }
+/* How-to guide */
+.guide { display: none; border: 1px solid var(--fr-border-subtle); border-radius: var(--fr-radius-card); padding: 14px; margin-bottom: var(--fr-space-4); }
+.guide ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: var(--fr-text-muted); }
+.guide li b { color: var(--fr-text); font-weight: 650; }
 
-    .card {
-      background: var(--card);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius);
-      padding: 14px;
-      margin-bottom: 14px;
-      box-shadow: var(--card-shadow);
-      transition: border-color 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
-    }
-
-    .card:focus-within { border-color: var(--primary-soft); }
-
-    .mode-switch {
-      position: relative;
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 8px; padding: 5px;
-      background: var(--input-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
-      transition: background 0.35s ease, border-color 0.35s ease;
-    }
-
-    .mode-option {
-      position: relative; z-index: 1;
-      min-height: 82px; padding: 10px 9px;
-      border: 1px solid transparent; border-radius: 10px;
-      background: transparent; color: var(--text-muted);
-      text-align: left; cursor: pointer; font-family: var(--body);
-      transition: color 0.25s ease, transform 0.25s ease, background 0.35s ease,
-        border-color 0.35s ease, box-shadow 0.35s ease;
-    }
-
-    .mode-option:hover { transform: translateY(-1px); color: var(--text); }
-
-    .mode-option.active {
-      background: var(--card);
-      border-color: var(--primary-soft);
-      color: var(--text);
-      box-shadow: 0 5px 15px var(--primary-glow);
-    }
-
-    .mode-option-icon {
-      display: block; margin-bottom: 3px;
-      color: var(--primary); font-size: 18px; line-height: 1;
-      transition: color 0.35s ease;
-    }
-
-    .mode-option-name {
-      display: block; font-size: 11.5px; font-weight: 800; line-height: 1.2;
-    }
-
-    .mode-option-copy {
-      display: block; margin-top: 4px; font-size: 10px; line-height: 1.25;
-      color: var(--text-muted);
-    }
-
-    .mode-description {
-      display: flex; align-items: flex-start; gap: 7px;
-      margin-top: 8px; color: var(--text-muted);
-      font-size: 10.5px; line-height: 1.35;
-      transition: color 0.35s ease;
-    }
-
-    .mode-description::before {
-      content: "✓";
-      flex: 0 0 auto;
-      width: 15px; height: 15px; border-radius: 50%;
-      background: var(--primary-glow); color: var(--primary);
-      font-size: 10px; font-weight: 900; text-align: center; line-height: 15px;
-      transition: background 0.35s ease, color 0.35s ease;
-    }
-
-    .mode-input-hidden {
-      position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;
-    }
-
-    .card-title {
-      font-family: var(--display);
-      font-size: 10px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.08em;
-      color: var(--primary);
-      margin-bottom: 10px;
-    }
-
-    .field-group { margin-bottom: 10px; }
-    .field-group:last-child { margin-bottom: 0; }
-
-    label {
-      display: block; font-size: 11px; font-weight: 600;
-      color: var(--text-muted); margin-bottom: 4px;
-    }
-
-    input {
-      width: 100%;
-      background: var(--input-bg);
-      border: 1px solid var(--card-border);
-      color: var(--text);
-      padding: 8px 10px; border-radius: 10px;
-      font-size: 12px; outline: none; font-family: var(--body);
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-
-    input::placeholder { color: var(--text-faint); }
-
-    input:focus, textarea:focus {
-      border-color: var(--primary-soft);
-      box-shadow: 0 0 0 3px var(--primary-glow);
-    }
-
-    .notification {
-      padding: 9px 12px; border-radius: 10px;
-      font-size: 11.5px; margin-bottom: 12px; display: none;
-    }
-
-    .notification.warn {
-      background: var(--danger-bg); border: 1px solid var(--danger-border);
-      color: var(--danger); display: block;
-    }
-
-    .notification.warn code {
-      background: var(--danger-bg);
-      padding: 1px 5px; border-radius: 4px; font-weight: 700; color: var(--danger);
-    }
-
-    .setup-card { display: none; }
-
-    .footer-links {
-      display: flex; justify-content: center; gap: 14px; margin-top: 12px; font-size: 11px;
-    }
-
-    .footer-links button {
-      background: none; border: none;
-      color: var(--text-muted); font-size: 11px; cursor: pointer; padding: 2px;
-      text-decoration: underline dotted; font-family: var(--body);
-    }
-
-    .footer-links button:hover { color: var(--primary); }
-
-    .guide { display: none; }
-
-    .guide ol {
-      margin: 0; padding-left: 18px;
-      display: flex; flex-direction: column; gap: 8px;
-      font-size: 12px; color: var(--text);
-    }
-
-    .guide li b { color: var(--primary); }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, .status-dot {
-        animation: none !important; transition: none !important;
-      }
-    }
-  </style>
+/* Footer */
+.foot { margin-top: var(--fr-space-4); padding-top: var(--fr-space-3); border-top: 1px solid var(--fr-border-subtle); display: flex; justify-content: space-between; align-items: center; }
+.foot .link-btn { font-size: 11px; color: var(--fr-text-subtle); }
+.foot .link-btn:hover { color: var(--fr-text); }
+.foot-hint { font: 500 9.5px var(--fr-mono); letter-spacing: .06em; color: var(--fr-text-subtle); }
+</style>
 </head>
 <body>
 
-  <header>
+  <header class="masthead">
     <div class="brand">
-      <span class="brand-logo">⚡</span>
-      <h1>Flash Resume</h1>
+      <svg class="brand-mark" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <rect x="1" y="1" width="18" height="18" rx="4" style="fill:var(--fr-accent)"/>
+        <rect x="5" y="5.4" width="10" height="1.7" rx="0.85" style="fill:var(--fr-accent-text)"/>
+        <rect x="5" y="9.15" width="10" height="1.7" rx="0.85" style="fill:var(--fr-accent-text)"/>
+        <rect x="5" y="12.9" width="6" height="1.7" rx="0.85" style="fill:var(--fr-accent-text)"/>
+      </svg>
+      <div>
+        <h1>Flash Resume</h1>
+        <div class="brand-tag">1-PAGE ATS TAILOR</div>
+      </div>
     </div>
-    <div class="header-actions">
-      <button id="guideToggle" class="icon-btn" title="How to use">?</button>
-      <div id="statusBadge" class="status-badge offline">
-        <div class="status-dot"></div>
+    <div class="masthead-actions">
+      <button id="guideToggle" class="guide-btn" type="button" title="How to use" aria-label="How to use">?</button>
+      <div class="status-badge offline" id="statusBadge">
+        <span class="dot" aria-hidden="true"></span>
         <span id="statusText">Checking…</span>
       </div>
     </div>
   </header>
 
-  <div id="offlineNotice" class="notification warn" style="display: none;">
-    ⚠️ Companion engine offline — it starts silently at login. If it just logged in, wait a moment; otherwise run <code>fs setup</code> once to re-register it.
+  <hr class="rule">
+
+  <!-- Offline / engine status -->
+  <div id="offlineNotice" class="notice notice-danger" style="display:none;">
+    Companion engine offline — it starts silently at login. If it just logged in, wait a moment; otherwise run <code>fs setup</code> once to re-register it.
   </div>
 
   <!-- Server-side setup card: only shown when the engine has no API key.
        The server owns provider/key/save-folder (set by `fs setup`), so the
        browser no longer runs its own setup wizard. -->
-  <div id="setupCard" class="card setup-card" style="display: none;">
-    <div class="card-title">Finish server setup</div>
-    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
-      Open a terminal and run <code>fs setup</code> once to add your API key and choose a save folder. Everything is configured on the server, not in the browser.
-    </p>
+  <div id="setupCard" class="notice setup-card" style="display:none;">
+    Finish server setup — open a terminal and run <code>fs setup</code> once to add your API key and choose a save folder. Everything is configured on the server, not in the browser.
   </div>
 
   <main>
-    <!-- How-to guide -->
-    <div id="guideView" class="guide card">
-      <div class="card-title">How to use</div>
+    <div id="guideView" class="guide">
+      <div class="section-label" style="margin-bottom:10px;">How to use</div>
       <ol>
         <li>Drag across the job description you want to use.</li>
-        <li>Click the blue or red Flash Resume button on the right edge.</li>
+        <li>Click the <b>Flash Resume</b> button on the right edge.</li>
         <li>Only the selected job description is sent to the local engine — no full-page parsing.</li>
         <li>Use this popup to choose between Truthful and Interview mode.</li>
         <li>The 1-page PDF is saved to your configured folder automatically.</li>
       </ol>
     </div>
 
-    <div>
-      <div class="card">
-        <div class="card-title">Choose your resume mode</div>
-        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-          Select the job description, then click the Flash Resume button on the right edge of the page.
-        </p>
-        <div class="field-group">
-          <input id="modeInput" class="mode-input-hidden" value="truthful">
-          <div class="mode-switch" role="group" aria-label="Resume mode">
-            <button type="button" class="mode-option active" data-mode="truthful" aria-pressed="true">
-              <span class="mode-option-icon">✓</span>
-              <span class="mode-option-name">Truthful mode</span>
-              <span class="mode-option-copy">Only skills backed by your resume</span>
-            </button>
-            <button type="button" class="mode-option" data-mode="interview_prep" aria-pressed="false">
-              <span class="mode-option-icon">✦</span>
-              <span class="mode-option-name">Interview mode</span>
-              <span class="mode-option-copy">Add professional familiarity signals</span>
-            </button>
-          </div>
-          <div id="modeDescription" class="mode-description">
-            Your resume stays evidence-led while matching the job honestly.
-          </div>
-        </div>
+    <section>
+      <div class="section-head"><span class="section-label">Resume mode</span></div>
+      <input id="modeInput" class="mode-input-hidden" value="truthful" aria-hidden="true">
+      <div class="mode-list" role="group" aria-label="Resume mode">
+        <button type="button" class="mode-option active" data-mode="truthful" aria-pressed="true">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span class="mode-body"><span class="mode-name">Truthful</span><span class="mode-copy">Only skills backed by your resume</span></span>
+          <span class="mode-key">01</span>
+        </button>
+        <button type="button" class="mode-option" data-mode="interview_prep" aria-pressed="false">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span class="mode-body"><span class="mode-name">Interview</span><span class="mode-copy">Familiarity signals, clearly labeled</span></span>
+          <span class="mode-key">02</span>
+        </button>
       </div>
-    </div>
+      <p id="modeDescription" class="mode-description">Your resume stays evidence-led while matching the job honestly.</p>
+    </section>
   </main>
 
-  <!-- Application History Card (recent 5 preview — scales via full-page view) -->
-  <div id="historyCard" class="card" style="display: none;">
-    <div class="card-title">Recent Applications</div>
-    <div id="historyList" style="max-height: 200px; overflow-y: auto;"></div>
-    <button id="viewAllHistory" class="icon-btn" style="width: 100%; margin-top: 8px;">
-      🔍 View all →
-    </button>
-  </div>
+  <hr class="rule">
 
-  <div class="footer-links">
-    <button id="reopenGuide">❓ How to use</button>
-  </div>
+  <!-- Recent applications (preview — scales via full-page view) -->
+  <section id="historyCard" style="display:none;">
+    <div class="section-head">
+      <span class="section-label">Recent applications</span>
+      <button id="viewAllHistory" class="link-btn" type="button">View all →</button>
+    </div>
+    <div id="historyList"></div>
+  </section>
+
+  <footer class="foot">
+    <button id="reopenGuide" class="link-btn" type="button">How to use</button>
+    <span class="foot-hint">SELECT JD → FLASH ON PAGE</span>
+  </footer>
 
   <script src="popup.js"></script>
 </body>

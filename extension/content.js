@@ -86,12 +86,11 @@
     if (fab) {
       const interview = resumeMode === "interview_prep";
       fab.classList.toggle("fr-interview-mode", interview);
-      fab.style.setProperty("--fr-accent", interview ? "#d92d20" : "#3b82f6");
-      fab.style.setProperty(
-        "--fr-accent-shadow",
-        interview ? "rgba(180,35,24,.35)" : "rgba(59,130,246,.35)"
-      );
-      fab.textContent = interview ? "✦" : "⚡";
+      // Sliver/star scheme: the FAB inverts to mirror the popup. Truthful = a
+      // white sliver with a black star in the middle; Interview = a black
+      // sliver with a white star. Colors are driven entirely by the class, so
+      // no inline overrides are needed here.
+      fab.textContent = "✦";
       fab.title = interview
         ? "Flash Resume — Interview mode"
         : "Flash Resume — Truthful mode";
@@ -119,30 +118,32 @@
       #${FAB_ID} {
         position: fixed; bottom: 24px; right: 0; z-index: 2147483647;
         width: 6px; height: 48px; border-radius: 3px 0 0 3px;
-        --fr-accent: #3b82f6;
-        --fr-accent-shadow: rgba(59,130,246,.35);
-        background: var(--fr-accent); border: none; cursor: pointer;
-        box-shadow: -2px 0 8px var(--fr-accent-shadow);
-        font-size: 0; color: #fff; display: flex; align-items: center; justify-content: center;
+        box-sizing: border-box; padding: 0; margin: 0;
+        --fr-bg: #ffffff;      /* sliver — white (truthful) */
+        --fr-fg: #0a0a0a;      /* star in the middle — black (truthful) */
+        --fr-shadow: rgba(0,0,0,.32);
+        background: var(--fr-bg); border: none; cursor: pointer;
+        box-shadow: -2px 0 8px var(--fr-shadow);
+        font-size: 0; color: var(--fr-fg); display: flex; align-items: center; justify-content: center;
         overflow: hidden; white-space: nowrap;
         transform-origin: right center;
         transition: width .22s ease, border-radius .22s ease, box-shadow .22s ease,
-          background .45s ease, transform .3s ease, opacity .25s ease;
+          background .45s ease, color .45s ease, transform .3s ease, opacity .25s ease;
         font-family: system-ui, sans-serif;
       }
       #${FAB_ID}:hover {
         width: 52px; height: 52px; border-radius: 50%;
         font-size: 22px;
-        box-shadow: 0 4px 14px var(--fr-accent-shadow);
+        box-shadow: 0 4px 14px var(--fr-shadow);
       }
       #${FAB_ID}.fr-interview-mode {
-        --fr-accent: #d92d20;
-        --fr-accent-shadow: rgba(180,35,24,.35);
-        background: var(--fr-accent);
-        box-shadow: -2px 0 8px var(--fr-accent-shadow);
+        --fr-bg: #0a0a0a;      /* sliver — black (interview) */
+        --fr-fg: #ffffff;      /* star — white (interview) */
+        --fr-shadow: rgba(0,0,0,.45);
+        box-shadow: -2px 0 8px rgba(0,0,0,.45);
       }
       #${FAB_ID}.fr-interview-mode:hover {
-        box-shadow: 0 4px 14px rgba(180,35,24,.45);
+        box-shadow: 0 4px 14px rgba(0,0,0,.5);
       }
       #${FAB_ID}.fr-working { pointer-events: none; opacity: .6; animation: fr-pulse 1s infinite; }
       @keyframes fr-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
@@ -245,7 +246,7 @@
     injectStyles();
     const btn = document.createElement("button");
     btn.id = FAB_ID;
-    btn.textContent = "⚡";
+    btn.textContent = "✦";
     btn.type = "button";
     btn.title = "Select the job description, then click Flash Resume";
     btn.setAttribute("aria-label", btn.title);

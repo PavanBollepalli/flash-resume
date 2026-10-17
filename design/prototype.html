@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PROTOTYPE — Flash Resume · Monochrome Workbench</title>
+<style>
+/* ════════════════════════════════════════════════════════════════════════
+   FLASH RESUME — "The Resume Workbench" · expressive monochrome
+   AUTHORITATIVE DESIGN DRAFT. Tokens + components here are copied 1:1 into
+   extension/popup.html and extension/history.html. Prototype-only rules are
+   prefixed `.proto-` and never ship.
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  color-scheme: dark;
+
+  --fr-bg: #0A0A0A;
+  --fr-surface: #151515;
+  --fr-surface-raised: #222222;
+  --fr-surface-hover: #1C1C1C;
+
+  --fr-border: #414141;
+  --fr-border-subtle: #292929;
+
+  --fr-text: #F0F0EB;
+  --fr-text-muted: #929292;
+  --fr-text-subtle: #686868;
+
+  --fr-accent: #F0F0EB;
+  --fr-accent-text: #0A0A0A;
+
+  --fr-success: #34D399;
+  --fr-warning: #FBBF24;
+  --fr-danger: #FB7185;
+
+  --fr-font: Inter, "Segoe UI", system-ui, sans-serif;
+  --fr-mono: "Cascadia Code", Consolas, monospace;
+
+  --fr-space-1: 4px;
+  --fr-space-2: 8px;
+  --fr-space-3: 12px;
+  --fr-space-4: 16px;
+  --fr-space-5: 24px;
+  --fr-space-6: 32px;
+  --fr-space-7: 48px;
+
+  --fr-radius-control: 5px;
+  --fr-radius-card: 8px;
+
+  --fr-transition: 140ms ease;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #050505; color: var(--fr-text); font: 14px/1.5 var(--fr-font); }
+button, input, select { font-family: var(--fr-font); }
+:focus-visible { outline: 2px solid var(--fr-text); outline-offset: 2px; border-radius: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+/* ── Shared controls ─────────────────────────────────────────────────── */
+.fr-btn {
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px;
+  border-radius: var(--fr-radius-control); border: 1px solid var(--fr-border);
+  background: transparent; color: var(--fr-text);
+  font: 600 12.5px/1.2 var(--fr-font); letter-spacing: .01em;
+  cursor: pointer; text-decoration: none;
+  transition: background var(--fr-transition), border-color var(--fr-transition), color var(--fr-transition);
+}
+.fr-btn:hover { background: var(--fr-surface-hover); border-color: var(--fr-text-subtle); }
+.fr-btn:disabled { opacity: .35; cursor: default; background: transparent; }
+.fr-btn.solid { background: var(--fr-accent); border-color: var(--fr-accent); color: var(--fr-accent-text); }
+.fr-btn.solid:hover { background: #DBDBD3; }
+
+/* ATS signal component — one language on both surfaces.
+   hi ≥85 · mid 70–84 · lo 0–69 · na = not scored (never rendered as 0). */
+.ats { display: inline-flex; flex-direction: column; gap: 5px; min-width: 58px; }
+.ats-line { display: flex; align-items: baseline; gap: 3px; }
+.ats-num { font: 600 14px var(--fr-mono); font-variant-numeric: tabular-nums; }
+.ats-unit { font: 500 10px var(--fr-mono); color: var(--fr-text-subtle); }
+.ats-meter { width: 44px; height: 3px; border-radius: 2px; background: var(--fr-border-subtle); overflow: hidden; }
+.ats-meter i { display: block; height: 100%; border-radius: 2px; background: var(--fr-text-subtle); }
+.ats.hi  .ats-num { color: var(--fr-success); }  .ats.hi  .ats-meter i { background: var(--fr-success); }
+.ats.mid .ats-num { color: var(--fr-warning); }  .ats.mid .ats-meter i { background: var(--fr-warning); }
+.ats.lo  .ats-num { color: var(--fr-danger); }   .ats.lo  .ats-meter i { background: var(--fr-danger); }
+.ats.na  .ats-num { color: var(--fr-text-subtle); }
+.ats.na  .ats-meter i { width: 0 !important; background: transparent; }
+
+/* ── POPUP ───────────────────────────────────────────────────────────── */
+.popup {
+  width: 380px; background: var(--fr-bg); color: var(--fr-text);
+  padding: var(--fr-space-4); font-size: 13px; line-height: 1.5;
+}
+.masthead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.brand { display: flex; gap: 11px; align-items: flex-start; min-width: 0; }
+.brand-mark { flex: 0 0 auto; margin-top: 4px; }
+.brand h1 { font-size: 26px; font-weight: 800; letter-spacing: -.03em; line-height: 1.05; }
+.brand-tag { margin-top: 5px; font: 500 9.5px var(--fr-mono); letter-spacing: .22em; color: var(--fr-text-subtle); }
+.status-badge {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+  font: 600 10px var(--fr-mono); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--fr-text-muted); padding: 5px 9px; margin-top: 2px;
+  border: 1px solid var(--fr-border-subtle); border-radius: 999px;
+  max-width: 150px; white-space: nowrap;
+}
+.status-badge #statusText { overflow: hidden; text-overflow: ellipsis; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fr-success); animation: fr-blink 2.2s ease-in-out infinite; }
+.status-badge.offline { color: var(--fr-danger); border-color: rgba(251,113,133,.35); }
+.status-badge.offline .dot { background: var(--fr-danger); animation: none; }
+@keyframes fr-blink { 50% { opacity: .35; } }
+
+.rule { border: none; border-top: 1px solid var(--fr-border-subtle); margin: var(--fr-space-4) 0; }
+
+.notice { border: 1px solid var(--fr-border-subtle); border-radius: var(--fr-radius-card); padding: 10px 12px; font-size: 11.5px; color: var(--fr-text-muted); margin-bottom: var(--fr-space-4); line-height: 1.55; }
+.notice code { font-family: var(--fr-mono); font-size: 11px; background: var(--fr-surface-raised); padding: 1px 5px; border-radius: 4px; color: var(--fr-text); }
+.notice-danger { border-color: rgba(251,113,133,.35); color: var(--fr-danger); }
+
+.section-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.section-label { font: 600 10px var(--fr-mono); letter-spacing: .16em; text-transform: uppercase; color: var(--fr-text-subtle); }
+.link-btn { background: none; border: none; color: var(--fr-text-muted); font: 600 11px var(--fr-font); cursor: pointer; padding: 2px 0; }
+.link-btn:hover { color: var(--fr-text); }
+
+.mode-input-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.mode-list { display: flex; flex-direction: column; gap: 8px; }
+.mode-option {
+  display: flex; align-items: flex-start; gap: 11px; text-align: left;
+  padding: 12px 14px; border-radius: var(--fr-radius-card);
+  border: 1px solid var(--fr-border); background: transparent; color: var(--fr-text);
+  cursor: pointer; transition: background var(--fr-transition), border-color var(--fr-transition), color var(--fr-transition);
+}
+.mode-option:hover { background: var(--fr-surface-hover); }
+.mode-option.active { background: var(--fr-accent); border-color: var(--fr-accent); color: var(--fr-accent-text); }
+.mode-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--fr-text-muted); margin-top: 4px; }
+.mode-option.active .mode-dot { border-color: var(--fr-accent-text); background: var(--fr-accent-text); }
+.mode-body { flex: 1; min-width: 0; }
+.mode-name { display: block; font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
+.mode-copy { display: block; margin-top: 2px; font-size: 11px; color: var(--fr-text-muted); line-height: 1.35; }
+.mode-option.active .mode-copy { color: rgba(10,10,10,.62); }
+.mode-key { font: 500 10px var(--fr-mono); color: var(--fr-text-subtle); margin-top: 3px; }
+.mode-option.active .mode-key { color: rgba(10,10,10,.45); }
+.mode-description { margin-top: 10px; font-size: 11.5px; color: var(--fr-text-muted); line-height: 1.45; }
+.mode-description::before { content: "—"; color: var(--fr-text-subtle); margin-right: 7px; }
+
+.app-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--fr-border-subtle); }
+.app-row:first-child { border-top: none; padding-top: 2px; }
+.app-main { flex: 1; min-width: 0; }
+.app-company { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-meta { font-size: 10.5px; color: var(--fr-text-muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-meta .mono { font-family: var(--fr-mono); color: var(--fr-text-subtle); }
+.app-score { font: 600 12px var(--fr-mono); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.app-score.hi { color: var(--fr-success); } .app-score.mid { color: var(--fr-warning); }
+.app-score.lo { color: var(--fr-danger); }  .app-score.na { color: var(--fr-text-subtle); }
+.app-pdf {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--fr-border-subtle); border-radius: var(--fr-radius-control);
+  padding: 5px 8px; color: var(--fr-text-muted); font: 600 10.5px var(--fr-font); text-decoration: none;
+  transition: color var(--fr-transition), border-color var(--fr-transition), background var(--fr-transition);
+}
+.app-pdf:hover { color: var(--fr-text); border-color: var(--fr-border); background: var(--fr-surface-hover); }
+.list-note { padding: 8px 0; font-size: 11.5px; color: var(--fr-text-muted); line-height: 1.5; }
+.sk { display: block; height: 11px; border-radius: 3px; background: var(--fr-surface-raised); animation: fr-pulse 1.3s ease-in-out infinite; }
+@keyframes fr-pulse { 50% { opacity: .45; } }
+
+.guide { display: none; border: 1px solid var(--fr-border-subtle); border-radius: var(--fr-radius-card); padding: 14px; margin-bottom: var(--fr-space-4); }
+.guide ol { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: var(--fr-text-muted); }
+.guide li b { color: var(--fr-text); font-weight: 650; }
+
+.foot { margin-top: var(--fr-space-4); padding-top: var(--fr-space-3); border-top: 1px solid var(--fr-border-subtle); display: flex; justify-content: space-between; align-items: center; }
+.foot .link-btn { font-size: 11px; color: var(--fr-text-subtle); }
+.foot .link-btn:hover { color: var(--fr-text); }
+.foot-hint { font: 500 9.5px var(--fr-mono); letter-spacing: .06em; color: var(--fr-text-subtle); }
+
+/* ── DASHBOARD ───────────────────────────────────────────────────────── */
+.dash { background: var(--fr-bg); color: var(--fr-text); padding: 44px 44px 60px; min-height: 100%; }
+.wrap { max-width: 1060px; margin: 0 auto; }
+
+.head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 30px; }
+.wordmark { display: flex; align-items: center; gap: 9px; font: 600 11px var(--fr-mono); letter-spacing: .24em; color: var(--fr-text-muted); margin-bottom: 16px; }
+.wordmark .slash { color: var(--fr-text-subtle); padding: 0 1px; }
+.page-title { font-size: 34px; font-weight: 800; letter-spacing: -.025em; line-height: 1.04; }
+.page-sub { margin-top: 9px; font: 500 10.5px var(--fr-mono); letter-spacing: .18em; text-transform: uppercase; color: var(--fr-text-subtle); }
+
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--fr-border-subtle); border-bottom: 1px solid var(--fr-border-subtle); margin-bottom: 30px; }
+.stat { padding: 18px 24px 17px 0; }
+.stat + .stat { border-left: 1px solid var(--fr-border-subtle); padding-left: 24px; }
+.lbl { font: 600 10px var(--fr-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--fr-text-subtle); }
+.val { margin-top: 9px; font: 700 36px/1 var(--fr-font); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.val .u { font: 500 15px var(--fr-mono); color: var(--fr-text-subtle); margin-left: 2px; }
+.i-interview .val { color: var(--fr-warning); }
+.i-offered .val { color: var(--fr-success); }
+.i-ats .signal { margin-top: 11px; width: 74px; height: 3px; border-radius: 2px; background: var(--fr-border-subtle); overflow: hidden; }
+.i-ats .signal i { display: block; height: 100%; background: var(--fr-text-subtle); }
+.i-ats[data-level="hi"]  .val { color: var(--fr-success); }  .i-ats[data-level="hi"]  .signal i { background: var(--fr-success); }
+.i-ats[data-level="mid"] .val { color: var(--fr-warning); }  .i-ats[data-level="mid"] .signal i { background: var(--fr-warning); }
+.i-ats[data-level="lo"]  .val { color: var(--fr-danger); }   .i-ats[data-level="lo"]  .signal i { background: var(--fr-danger); }
+.i-ats[data-level="na"]  .val { color: var(--fr-text-subtle); }
+.val.skeleton { animation: fr-pulse 1.3s ease-in-out infinite; opacity: .5; }
+
+.toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.search {
+  flex: 1; min-width: 220px; background: var(--fr-surface); border: 1px solid var(--fr-border-subtle);
+  border-radius: var(--fr-radius-control); color: var(--fr-text); padding: 9px 13px; font-size: 13px;
+  transition: border-color var(--fr-transition);
+}
+.search::placeholder { color: var(--fr-text-subtle); }
+.search:focus { outline: none; border-color: var(--fr-text-muted); }
+.pills { display: inline-flex; gap: 2px; border: 1px solid var(--fr-border-subtle); border-radius: 7px; padding: 2px; background: var(--fr-surface); }
+.pill {
+  border: none; background: transparent; color: var(--fr-text-muted);
+  font: 600 12px var(--fr-font); padding: 6px 13px; border-radius: var(--fr-radius-control); cursor: pointer;
+  transition: background var(--fr-transition), color var(--fr-transition);
+}
+.pill:hover { color: var(--fr-text); background: var(--fr-surface-hover); }
+.pill.active { background: var(--fr-accent); color: var(--fr-accent-text); }
+.count { margin-left: auto; font: 500 11px var(--fr-mono); letter-spacing: .08em; color: var(--fr-text-subtle); white-space: nowrap; }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  text-align: left; font: 600 10px var(--fr-mono); letter-spacing: .12em; text-transform: uppercase;
+  color: var(--fr-text-subtle); padding: 10px 12px; border-bottom: 1px solid var(--fr-border); white-space: nowrap;
+}
+tbody td { padding: 14px 12px; border-bottom: 1px solid var(--fr-border-subtle); font-size: 13px; vertical-align: middle; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr { transition: background var(--fr-transition); }
+tbody tr:hover { background: var(--fr-surface-hover); }
+.date { font: 500 11.5px var(--fr-mono); color: var(--fr-text-muted); white-space: nowrap; }
+.company { font-size: 14px; font-weight: 700; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.company-sub { display: block; margin-top: 2px; font: 500 10px var(--fr-mono); letter-spacing: .06em; color: var(--fr-text-subtle); }
+.role { color: var(--fr-text-muted); font-size: 12.5px; max-width: 260px; overflow-wrap: anywhere; }
+
+.status-select {
+  appearance: none; -webkit-appearance: none;
+  background-color: var(--fr-surface); border: 1px solid var(--fr-border-subtle); border-radius: var(--fr-radius-control);
+  color: var(--fr-text); font: 500 12px var(--fr-font); padding: 5px 24px 5px 10px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23929292'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+  transition: border-color var(--fr-transition);
+}
+.status-select:hover { border-color: var(--fr-border); }
+.status-select.applied { color: var(--fr-text); }
+.status-select.interview { color: var(--fr-warning); }
+.status-select.offered { color: var(--fr-success); }
+
+.artifacts { display: flex; gap: 6px; }
+.artifact {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--fr-border-subtle); border-radius: var(--fr-radius-control); background: transparent;
+  color: var(--fr-text-muted); font: 600 11px var(--fr-font); padding: 6px 10px; cursor: pointer; text-decoration: none;
+  transition: color var(--fr-transition), border-color var(--fr-transition), background var(--fr-transition);
+}
+.artifact:hover { color: var(--fr-text); border-color: var(--fr-border); background: var(--fr-surface-hover); }
+
+.empty { margin-top: 4px; padding: 76px 24px; text-align: center; border: 1px dashed var(--fr-border-subtle); border-radius: var(--fr-radius-card); }
+.empty-title { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+.empty-hint { margin-top: 7px; font-size: 12.5px; color: var(--fr-text-muted); }
+.empty-hint code { font-family: var(--fr-mono); font-size: 11.5px; background: var(--fr-surface-raised); padding: 2px 6px; border-radius: 4px; color: var(--fr-text); }
+
+.pager { display: flex; align-items: center; justify-content: center; gap: 16px; padding-top: 26px; }
+.pager .info { font: 500 11px var(--fr-mono); letter-spacing: .08em; color: var(--fr-text-subtle); }
+.footer-note { text-align: center; margin-top: 18px; font: 500 10.5px var(--fr-mono); letter-spacing: .06em; color: var(--fr-text-subtle); }
+
+/* Diff modal */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.66); display: none; align-items: center; justify-content: center; padding: 28px; z-index: 50; }
+.modal.open { display: flex; }
+.dialog {
+  width: 100%; max-width: 880px; max-height: 86vh; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--fr-surface); border: 1px solid var(--fr-border); border-radius: 10px;
+  opacity: 0; transform: translateY(8px); transition: opacity var(--fr-transition), transform var(--fr-transition);
+}
+.modal.open .dialog { opacity: 1; transform: none; }
+.dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px 22px; border-bottom: 1px solid var(--fr-border-subtle); }
+.dialog-head .t { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+.dialog-head .s { margin-top: 4px; font: 500 11px var(--fr-mono); letter-spacing: .04em; color: var(--fr-text-subtle); }
+.dialog-head .tools { display: flex; gap: 8px; align-items: center; }
+.xbtn {
+  width: 30px; height: 30px; display: grid; place-items: center;
+  border: 1px solid var(--fr-border-subtle); border-radius: var(--fr-radius-control); background: transparent;
+  color: var(--fr-text-muted); font-size: 16px; line-height: 1; cursor: pointer;
+  transition: color var(--fr-transition), border-color var(--fr-transition);
+}
+.xbtn:hover { color: var(--fr-text); border-color: var(--fr-border); }
+.diff-scroll { overflow-y: auto; padding: 24px 28px; font-size: 13.5px; }
+.diff-scroll .dlg-load, .diff-scroll .dlg-error { color: var(--fr-text-muted); text-align: center; padding: 48px 10px; }
+.diff-scroll .dlg-error { color: var(--fr-danger); }
+.diff-scroll.rendered h1, .diff-scroll.rendered h2, .diff-scroll.rendered h3 { letter-spacing: -.01em; }
+.diff-scroll.rendered h1 { font-size: 19px; font-weight: 800; margin: 24px 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--fr-border-subtle); }
+.diff-scroll.rendered h1:first-child { margin-top: 0; }
+.diff-scroll.rendered h2 { font-size: 14px; font-weight: 700; margin: 20px 0 8px; }
+.diff-scroll.rendered h3 { font-size: 13px; font-weight: 700; margin: 16px 0 6px; color: var(--fr-text-muted); }
+.diff-scroll.rendered p { margin: 8px 0; }
+.diff-scroll.rendered ul, .diff-scroll.rendered ol { margin: 8px 0; padding-left: 22px; }
+.diff-scroll.rendered li { margin: 3px 0; }
+.diff-scroll.rendered strong { color: var(--fr-text); }
+.diff-scroll.rendered code { font-family: var(--fr-mono); font-size: 12px; background: var(--fr-surface-raised); border-radius: 4px; padding: 1px 5px; }
+.diff-scroll.rendered table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 12.5px; }
+.diff-scroll.rendered th { text-align: left; font: 600 10px var(--fr-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--fr-text-subtle); }
+.diff-scroll.rendered th, .diff-scroll.rendered td { border: 1px solid var(--fr-border-subtle); padding: 7px 10px; vertical-align: top; }
+.diff-scroll.rendered tbody tr:nth-child(even) { background: rgba(255,255,255,.025); }
+.diff-scroll.rendered hr { border: none; border-top: 1px solid var(--fr-border-subtle); margin: 18px 0; }
+
+/* Toast (failed saves) */
+.toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(8px);
+  background: var(--fr-surface-raised); border: 1px solid var(--fr-border); border-radius: var(--fr-radius-card);
+  color: var(--fr-text); font-size: 12.5px; padding: 9px 16px; opacity: 0; pointer-events: none;
+  transition: opacity var(--fr-transition), transform var(--fr-transition); z-index: 60;
+}
+.toast.show { opacity: 1; transform: translateX(-50%); }
+.toast.error { color: var(--fr-danger); border-color: rgba(251,113,133,.4); }
+
+/* Narrow: stacked ledger rows */
+@media (max-width: 760px) {
+  .dash { padding: 24px 18px 40px; }
+  .head { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .page-title { font-size: 29px; }
+  .stats { grid-template-columns: 1fr 1fr; }
+  .stat { padding: 14px 14px 13px 0; }
+  .stat:nth-child(2n) { border-left: 1px solid var(--fr-border-subtle); padding-left: 16px; }
+  .stat:nth-child(n+3) { border-top: 1px solid var(--fr-border-subtle); }
+  .stat:nth-child(3) { border-left: none; padding-left: 0; }
+  .val { font-size: 30px; }
+  thead { display: none; }
+  table, tbody, tr, td { display: block; width: 100%; }
+  tbody tr { border: 1px solid var(--fr-border-subtle); border-radius: var(--fr-radius-card); margin-bottom: 10px; padding: 4px 0; background: var(--fr-surface); }
+  tbody td { display: flex; justify-content: space-between; align-items: center; gap: 14px; border: none; padding: 8px 14px; }
+  tbody td::before { content: attr(data-label); font: 600 9.5px var(--fr-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--fr-text-subtle); flex: 0 0 auto; }
+  td.cell-company, td.cell-role { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .role { max-width: none; }
+  .count { margin-left: 0; width: 100%; }
+}
+
+/* ── PROTOTYPE-ONLY chrome (never ships) ─────────────────────────────── */
+.proto-bar {
+  position: sticky; top: 0; z-index: 99; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  background: #000; border-bottom: 1px solid #333; padding: 10px 16px;
+  font: 600 11px var(--fr-mono); letter-spacing: .06em; color: #8a8a8a;
+}
+.proto-bar b { color: #F0F0EB; letter-spacing: .14em; }
+.proto-bar button {
+  border: 1px solid #3a3a3a; background: #101010; color: #cfcfcf; border-radius: 4px;
+  font: 600 10.5px var(--fr-mono); padding: 5px 9px; cursor: pointer;
+}
+.proto-bar button:hover { background: #1c1c1c; }
+.proto-bar button.on { background: #F0F0EB; color: #0A0A0A; border-color: #F0F0EB; }
+.proto-group { display: none; padding: 28px; }
+.proto-group.on { display: block; }
+.proto-frame { outline: 1px dashed #333; outline-offset: 10px; width: fit-content; }
+.proto-frame.dash-frame { width: min(1140px, 100%); }
+.proto-frame.dash-frame.narrow { width: 390px; overflow: hidden; }
+.proto-caption { margin-top: 22px; font: 500 11px var(--fr-mono); color: #6f6f6f; letter-spacing: .06em; }
+</style>
+</head>
+<body>
+
+<div class="proto-bar">
+  <b>PROTOTYPE · FLASH RESUME — MONOCHROME WORKBENCH</b>
+  <span>Popup:</span>
+  <button data-g="p-ready" class="on">Ready · truthful</button>
+  <button data-g="p-interview">Interview mode</button>
+  <button data-g="p-offline">Offline</button>
+  <button data-g="p-empty">No history</button>
+  <button data-g="p-loading">Loading</button>
+  <span>Dashboard:</span>
+  <button data-g="d-pop">Populated</button>
+  <button data-g="d-empty">Empty</button>
+  <button data-g="d-nomatch">No matches</button>
+  <button data-g="d-offline">Offline</button>
+  <button data-g="d-modal">Diff modal</button>
+  <button data-g="d-narrow">Narrow 390px</button>
+</div>
+
+<!-- ═══ POPUP FRAMES ═══ -->
+<div class="proto-group on" id="g-p-ready">
+  <div class="proto-frame popup">
+    <header class="masthead">
+      <div class="brand">
+        <svg class="brand-mark" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+          <rect x="1" y="1" width="18" height="18" rx="4" fill="#F0F0EB"/>
+          <rect x="5" y="5.4" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/>
+          <rect x="5" y="9.15" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/>
+          <rect x="5" y="12.9" width="6" height="1.7" rx="0.85" fill="#0A0A0A"/>
+        </svg>
+        <div>
+          <h1>Flash Resume</h1>
+          <div class="brand-tag">1-PAGE ATS TAILOR</div>
+        </div>
+      </div>
+      <div class="status-badge"><span class="dot"></span><span>Ready · gemini</span></div>
+    </header>
+    <hr class="rule">
+    <section>
+      <div class="section-head"><span class="section-label">Resume mode</span></div>
+      <div class="mode-list" role="group" aria-label="Resume mode">
+        <button type="button" class="mode-option active" aria-pressed="true">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span class="mode-body"><span class="mode-name">Truthful</span><span class="mode-copy">Only skills backed by your resume</span></span>
+          <span class="mode-key">01</span>
+        </button>
+        <button type="button" class="mode-option" aria-pressed="false">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span class="mode-body"><span class="mode-name">Interview</span><span class="mode-copy">Familiarity signals, clearly labeled</span></span>
+          <span class="mode-key">02</span>
+        </button>
+      </div>
+      <p class="mode-description">Your resume stays evidence-led while matching the job honestly.</p>
+    </section>
+    <hr class="rule">
+    <section>
+      <div class="section-head"><span class="section-label">Recent applications</span><button class="link-btn">View all →</button></div>
+      <div>
+        <div class="app-row">
+          <div class="app-main">
+            <div class="app-company">Digital Aura</div>
+            <div class="app-meta">AI Developer · <span class="mono">2026-10-17</span></div>
+          </div>
+          <span class="app-score lo">60%</span>
+          <a class="app-pdf" href="#" onclick="return false">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M3.2 1.4h4L9.4 3.6v7H3.2z"/><path d="M7.2 1.4v2.2H9.4"/></svg>
+            PDF
+          </a>
+        </div>
+      </div>
+    </section>
+    <footer class="foot"><button class="link-btn">How to use</button><span class="foot-hint">SELECT JD → FLASH ⚡ ON PAGE</span></footer>
+  </div>
+  <div class="proto-caption">POPUP / READY · TRUTHFUL SELECTED · RECENT APPLICATION ROW</div>
+</div>
+
+<div class="proto-group" id="g-p-interview">
+  <div class="proto-frame popup">
+    <header class="masthead">
+      <div class="brand">
+        <svg class="brand-mark" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="1" width="18" height="18" rx="4" fill="#F0F0EB"/><rect x="5" y="5.4" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="9.15" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="12.9" width="6" height="1.7" rx="0.85" fill="#0A0A0A"/></svg>
+        <div><h1>Flash Resume</h1><div class="brand-tag">1-PAGE ATS TAILOR</div></div>
+      </div>
+      <div class="status-badge"><span class="dot"></span><span>Ready · groq</span></div>
+    </header>
+    <hr class="rule">
+    <section>
+      <div class="section-head"><span class="section-label">Resume mode</span></div>
+      <div class="mode-list" role="group" aria-label="Resume mode">
+        <button type="button" class="mode-option" aria-pressed="false">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span class="mode-body"><span class="mode-name">Truthful</span><span class="mode-copy">Only skills backed by your resume</span></span>
+          <span class="mode-key">01</span>
+        </button>
+        <button type="button" class="mode-option active" aria-pressed="true">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span class="mode-body"><span class="mode-name">Interview</span><span class="mode-copy">Familiarity signals, clearly labeled</span></span>
+          <span class="mode-key">02</span>
+        </button>
+      </div>
+      <p class="mode-description">Adds closely related skills as Familiarity — never as production experience.</p>
+    </section>
+    <hr class="rule">
+    <section>
+      <div class="section-head"><span class="section-label">Recent applications</span><button class="link-btn">View all →</button></div>
+      <div>
+        <div class="app-row">
+          <div class="app-main">
+            <div class="app-company">Stripe</div>
+            <div class="app-meta">Senior Software Engineer, Payments Infrastructure · <span class="mono">2026-10-16</span></div>
+          </div>
+          <span class="app-score hi">91%</span>
+          <a class="app-pdf" href="#" onclick="return false">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M3.2 1.4h4L9.4 3.6v7H3.2z"/><path d="M7.2 1.4v2.2H9.4"/></svg>PDF
+          </a>
+        </div>
+        <div class="app-row">
+          <div class="app-main">
+            <div class="app-company">A very long company name that must truncate gracefully</div>
+            <div class="app-meta">Staff Engineer · <span class="mono">2026-10-15</span></div>
+          </div>
+          <span class="app-score na">–</span>
+          <a class="app-pdf" href="#" onclick="return false">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M3.2 1.4h4L9.4 3.6v7H3.2z"/><path d="M7.2 1.4v2.2H9.4"/></svg>PDF
+          </a>
+        </div>
+      </div>
+    </section>
+    <footer class="foot"><button class="link-btn">How to use</button><span class="foot-hint">SELECT JD → FLASH ⚡ ON PAGE</span></footer>
+  </div>
+  <div class="proto-caption">POPUP / INTERVIEW SELECTED · LONG NAME TRUNCATION · MISSING SCORE ≠ 0</div>
+</div>
+
+<div class="proto-group" id="g-p-offline">
+  <div class="proto-frame popup">
+    <header class="masthead">
+      <div class="brand">
+        <svg class="brand-mark" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="1" width="18" height="18" rx="4" fill="#F0F0EB"/><rect x="5" y="5.4" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="9.15" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="12.9" width="6" height="1.7" rx="0.85" fill="#0A0A0A"/></svg>
+        <div><h1>Flash Resume</h1><div class="brand-tag">1-PAGE ATS TAILOR</div></div>
+      </div>
+      <div class="status-badge offline"><span class="dot"></span><span>Offline</span></div>
+    </header>
+    <hr class="rule">
+    <div class="notice notice-danger">⚠ Companion engine offline — it starts silently at login. If it just logged in, wait a moment; otherwise run <code>fs setup</code> once to re-register it.</div>
+    <section>
+      <div class="section-head"><span class="section-label">Resume mode</span></div>
+      <div class="mode-list" role="group" aria-label="Resume mode">
+        <button type="button" class="mode-option active" aria-pressed="true">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span class="mode-body"><span class="mode-name">Truthful</span><span class="mode-copy">Only skills backed by your resume</span></span>
+          <span class="mode-key">01</span>
+        </button>
+        <button type="button" class="mode-option" aria-pressed="false">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span class="mode-body"><span class="mode-name">Interview</span><span class="mode-copy">Familiarity signals, clearly labeled</span></span>
+          <span class="mode-key">02</span>
+        </button>
+      </div>
+      <p class="mode-description">Your resume stays evidence-led while matching the job honestly.</p>
+    </section>
+    <hr class="rule">
+    <section>
+      <div class="section-head"><span class="section-label">Recent applications</span></div>
+      <div class="list-note">Engine offline — history unavailable right now.</div>
+    </section>
+    <footer class="foot"><button class="link-btn">How to use</button><span class="foot-hint">SELECT JD → FLASH ⚡ ON PAGE</span></footer>
+  </div>
+  <div class="proto-caption">POPUP / BACKEND OFFLINE + HISTORY UNAVAILABLE</div>
+</div>
+
+<div class="proto-group" id="g-p-empty">
+  <div class="proto-frame popup">
+    <header class="masthead">
+      <div class="brand">
+        <svg class="brand-mark" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="1" width="18" height="18" rx="4" fill="#F0F0EB"/><rect x="5" y="5.4" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="9.15" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="12.9" width="6" height="1.7" rx="0.85" fill="#0A0A0A"/></svg>
+        <div><h1>Flash Resume</h1><div class="brand-tag">1-PAGE ATS TAILOR</div></div>
+      </div>
+      <div class="status-badge"><span class="dot"></span><span>Ready · groq</span></div>
+    </header>
+    <hr class="rule">
+    <section>
+      <div class="section-head"><span class="section-label">Resume mode</span></div>
+      <div class="mode-list" role="group" aria-label="Resume mode">
+        <button type="button" class="mode-option active" aria-pressed="true">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span class="mode-body"><span class="mode-name">Truthful</span><span class="mode-copy">Only skills backed by your resume</span></span>
+          <span class="mode-key">01</span>
+        </button>
+        <button type="button" class="mode-option" aria-pressed="false">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span class="mode-body"><span class="mode-name">Interview</span><span class="mode-copy">Familiarity signals, clearly labeled</span></span>
+          <span class="mode-key">02</span>
+        </button>
+      </div>
+      <p class="mode-description">Your resume stays evidence-led while matching the job honestly.</p>
+    </section>
+    <hr class="rule">
+    <section>
+      <div class="section-head"><span class="section-label">Recent applications</span></div>
+      <div class="list-note">No applications yet — tailor a resume and it'll show up here.</div>
+    </section>
+    <footer class="foot"><button class="link-btn">How to use</button><span class="foot-hint">SELECT JD → FLASH ⚡ ON PAGE</span></footer>
+  </div>
+  <div class="proto-caption">POPUP / NO RECENT APPLICATIONS</div>
+</div>
+
+<div class="proto-group" id="g-p-loading">
+  <div class="proto-frame popup">
+    <header class="masthead">
+      <div class="brand">
+        <svg class="brand-mark" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="1" width="18" height="18" rx="4" fill="#F0F0EB"/><rect x="5" y="5.4" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="9.15" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="12.9" width="6" height="1.7" rx="0.85" fill="#0A0A0A"/></svg>
+        <div><h1>Flash Resume</h1><div class="brand-tag">1-PAGE ATS TAILOR</div></div>
+      </div>
+      <div class="status-badge"><span class="dot"></span><span>Checking…</span></div>
+    </header>
+    <hr class="rule">
+    <section>
+      <div class="section-head"><span class="section-label">Resume mode</span></div>
+      <div class="mode-list" role="group" aria-label="Resume mode">
+        <button type="button" class="mode-option active" aria-pressed="true">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span class="mode-body"><span class="mode-name">Truthful</span><span class="mode-copy">Only skills backed by your resume</span></span>
+          <span class="mode-key">01</span>
+        </button>
+        <button type="button" class="mode-option" aria-pressed="false">
+          <span class="mode-dot" aria-hidden="true"></span>
+          <span class="mode-body"><span class="mode-name">Interview</span><span class="mode-copy">Familiarity signals, clearly labeled</span></span>
+          <span class="mode-key">02</span>
+        </button>
+      </div>
+      <p class="mode-description">Your resume stays evidence-led while matching the job honestly.</p>
+    </section>
+    <hr class="rule">
+    <section>
+      <div class="section-head"><span class="section-label">Recent applications</span></div>
+      <div style="display:flex;flex-direction:column;gap:10px;padding:6px 0 10px;">
+        <span class="sk" style="width:65%"></span>
+        <span class="sk" style="width:40%"></span>
+        <span class="sk" style="width:52%"></span>
+      </div>
+    </section>
+    <footer class="foot"><button class="link-btn">How to use</button><span class="foot-hint">SELECT JD → FLASH ⚡ ON PAGE</span></footer>
+  </div>
+  <div class="proto-caption">POPUP / LOADING — STATUS CHECK + HISTORY SKELETONS</div>
+</div>
+
+<!-- ═══ DASHBOARD FRAMES ═══ -->
+<div class="proto-group" id="g-d-pop">
+  <div class="proto-frame dash-frame dash">
+    <div class="wrap">
+      <header class="head">
+        <div>
+          <div class="wordmark">
+            <svg width="15" height="15" viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="1" width="18" height="18" rx="4" fill="#F0F0EB"/><rect x="5" y="5.4" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="9.15" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="12.9" width="6" height="1.7" rx="0.85" fill="#0A0A0A"/></svg>
+            FLASH<span class="slash">/</span>RESUME
+          </div>
+          <h1 class="page-title">Application ledger.</h1>
+          <div class="page-sub">Application pipeline · local engine</div>
+        </div>
+        <button class="fr-btn">
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.6-3.66"/><path d="M12.2 1.4v3h-3"/></svg>
+          Refresh
+        </button>
+      </header>
+
+      <div class="stats">
+        <div class="stat i-total"><div class="lbl">Total applications</div><div class="val">6</div></div>
+        <div class="stat i-interview"><div class="lbl">In interview</div><div class="val">2</div></div>
+        <div class="stat i-offered"><div class="lbl">Offers</div><div class="val">1</div></div>
+        <div class="stat i-ats" data-level="mid"><div class="lbl">Average ATS</div><div class="val">77<span class="u">%</span></div><div class="signal"><i style="width:77%"></i></div></div>
+      </div>
+
+      <div class="toolbar">
+        <input class="search" type="search" placeholder="Search company or role…">
+        <div class="pills" role="group">
+          <button class="pill active">All</button>
+          <button class="pill">Applied</button>
+          <button class="pill">Interview</button>
+          <button class="pill">Offered</button>
+        </div>
+        <span class="count">6 results</span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Company</th><th>Role</th><th>Signal</th><th>Status</th><th>Artifacts</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="date">2026-10-17</td>
+              <td><div class="company">Digital Aura</div><span class="company-sub">interview_prep</span></td>
+              <td class="role">AI Developer</td>
+              <td><div class="ats lo" title="ATS signal 60/100 — needs improvement"><div class="ats-line"><span class="ats-num">60</span><span class="ats-unit">%</span></div><div class="ats-meter"><i style="width:60%"></i></div></div></td>
+              <td><select class="status-select applied"><option selected>applied</option><option>interview</option><option>offered</option></select></td>
+              <td><div class="artifacts">
+                <a class="artifact" href="#" onclick="return false"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M3.2 1.4h4L9.4 3.6v7H3.2z"/><path d="M7.2 1.4v2.2H9.4"/></svg>PDF</a>
+                <button class="artifact"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M2 1.8h3v8.4H2zM7 1.8h3v8.4H7z"/></svg>Diff</button>
+              </div></td>
+            </tr>
+            <tr>
+              <td class="date">2026-10-16</td>
+              <td><div class="company">Stripe</div><span class="company-sub">truthful</span></td>
+              <td class="role">Senior Software Engineer, Payments Infrastructure</td>
+              <td><div class="ats hi" title="ATS signal 91/100 — strong match"><div class="ats-line"><span class="ats-num">91</span><span class="ats-unit">%</span></div><div class="ats-meter"><i style="width:91%"></i></div></div></td>
+              <td><select class="status-select interview"><option>applied</option><option selected>interview</option><option>offered</option></select></td>
+              <td><div class="artifacts">
+                <a class="artifact" href="#" onclick="return false"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M3.2 1.4h4L9.4 3.6v7H3.2z"/><path d="M7.2 1.4v2.2H9.4"/></svg>PDF</a>
+                <button class="artifact"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M2 1.8h3v8.4H2zM7 1.8h3v8.4H7z"/></svg>Diff</button>
+              </div></td>
+            </tr>
+            <tr>
+              <td class="date">2026-10-15</td>
+              <td><div class="company">Anthropic</div><span class="company-sub">truthful</span></td>
+              <td class="role">Product Engineer</td>
+              <td><div class="ats hi" title="ATS signal 88/100 — strong match"><div class="ats-line"><span class="ats-num">88</span><span class="ats-unit">%</span></div><div class="ats-meter"><i style="width:88%"></i></div></div></td>
+              <td><select class="status-select offered"><option>applied</option><option>interview</option><option selected>offered</option></select></td>
+              <td><div class="artifacts">
+                <a class="artifact" href="#" onclick="return false"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M3.2 1.4h4L9.4 3.6v7H3.2z"/><path d="M7.2 1.4v2.2H9.4"/></svg>PDF</a>
+                <button class="artifact"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M2 1.8h3v8.4H2zM7 1.8h3v8.4H7z"/></svg>Diff</button>
+              </div></td>
+            </tr>
+            <tr>
+              <td class="date">2026-10-14</td>
+              <td><div class="company">Datadog</div><span class="company-sub">truthful</span></td>
+              <td class="role">Backend Engineer</td>
+              <td><div class="ats mid" title="ATS signal 74/100 — moderate match"><div class="ats-line"><span class="ats-num">74</span><span class="ats-unit">%</span></div><div class="ats-meter"><i style="width:74%"></i></div></div></td>
+              <td><select class="status-select interview"><option>applied</option><option selected>interview</option><option>offered</option></select></td>
+              <td><div class="artifacts">
+                <a class="artifact" href="#" onclick="return false"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M3.2 1.4h4L9.4 3.6v7H3.2z"/><path d="M7.2 1.4v2.2H9.4"/></svg>PDF</a>
+                <button class="artifact"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M2 1.8h3v8.4H2zM7 1.8h3v8.4H7z"/></svg>Diff</button>
+              </div></td>
+            </tr>
+            <tr>
+              <td class="date">2026-10-12</td>
+              <td><div class="company">Ramp</div><span class="company-sub">truthful</span></td>
+              <td class="role">Full-stack Engineer</td>
+              <td><div class="ats na" title="Not scored"><div class="ats-line"><span class="ats-num">–</span></div><div class="ats-meter"><i style="width:0%"></i></div></div></td>
+              <td><select class="status-select applied"><option selected>applied</option><option>interview</option><option>offered</option></select></td>
+              <td><div class="artifacts">
+                <a class="artifact" href="#" onclick="return false"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M3.2 1.4h4L9.4 3.6v7H3.2z"/><path d="M7.2 1.4v2.2H9.4"/></svg>PDF</a>
+                <button class="artifact"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M2 1.8h3v8.4H2zM7 1.8h3v8.4H7z"/></svg>Diff</button>
+              </div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pager">
+        <button class="fr-btn" disabled>← Prev</button>
+        <span class="info">PAGE 1 / 1</span>
+        <button class="fr-btn" disabled>Next →</button>
+      </div>
+      <div class="footer-note">PDF OPENS INLINE · DIFF RENDERS AS A REPORT · STATUS SAVES INSTANTLY</div>
+    </div>
+  </div>
+  <div class="proto-caption">DASHBOARD / POPULATED LEDGER — MIXED SIGNALS incl. NOT-SCORED ROW</div>
+</div>
+
+<div class="proto-group" id="g-d-empty">
+  <div class="proto-frame dash-frame dash">
+    <div class="wrap">
+      <header class="head">
+        <div>
+          <div class="wordmark"><svg width="15" height="15" viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="1" width="18" height="18" rx="4" fill="#F0F0EB"/><rect x="5" y="5.4" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="9.15" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="12.9" width="6" height="1.7" rx="0.85" fill="#0A0A0A"/></svg>FLASH<span class="slash">/</span>RESUME</div>
+          <h1 class="page-title">Application ledger.</h1>
+          <div class="page-sub">Application pipeline · local engine</div>
+        </div>
+        <button class="fr-btn"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.6-3.66"/><path d="M12.2 1.4v3h-3"/></svg>Refresh</button>
+      </header>
+      <div class="stats">
+        <div class="stat i-total"><div class="lbl">Total applications</div><div class="val">0</div></div>
+        <div class="stat i-interview"><div class="lbl">In interview</div><div class="val">0</div></div>
+        <div class="stat i-offered"><div class="lbl">Offers</div><div class="val">0</div></div>
+        <div class="stat i-ats" data-level="na"><div class="lbl">Average ATS</div><div class="val">–</div><div class="signal"><i style="width:0%"></i></div></div>
+      </div>
+      <div class="empty">
+        <div class="empty-title">No applications yet</div>
+        <div class="empty-hint">Tailor a resume and it'll show up here.</div>
+      </div>
+    </div>
+  </div>
+  <div class="proto-caption">DASHBOARD / EMPTY HISTORY</div>
+</div>
+
+<div class="proto-group" id="g-d-nomatch">
+  <div class="proto-frame dash-frame dash">
+    <div class="wrap">
+      <header class="head">
+        <div>
+          <div class="wordmark"><svg width="15" height="15" viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="1" width="18" height="18" rx="4" fill="#F0F0EB"/><rect x="5" y="5.4" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="9.15" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="12.9" width="6" height="1.7" rx="0.85" fill="#0A0A0A"/></svg>FLASH<span class="slash">/</span>RESUME</div>
+          <h1 class="page-title">Application ledger.</h1>
+          <div class="page-sub">Application pipeline · local engine</div>
+        </div>
+        <button class="fr-btn"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.6-3.66"/><path d="M12.2 1.4v3h-3"/></svg>Refresh</button>
+      </header>
+      <div class="toolbar">
+        <input class="search" type="search" value="quantum" placeholder="Search company or role…">
+        <div class="pills" role="group">
+          <button class="pill active">All</button><button class="pill">Applied</button><button class="pill">Interview</button><button class="pill">Offered</button>
+        </div>
+        <span class="count">0 results</span>
+      </div>
+      <div class="empty">
+        <div class="empty-title">No matches</div>
+        <div class="empty-hint">Try a different search or status filter.</div>
+      </div>
+    </div>
+  </div>
+  <div class="proto-caption">DASHBOARD / NO SEARCH MATCHES</div>
+</div>
+
+<div class="proto-group" id="g-d-offline">
+  <div class="proto-frame dash-frame dash">
+    <div class="wrap">
+      <header class="head">
+        <div>
+          <div class="wordmark"><svg width="15" height="15" viewBox="0 0 20 20" aria-hidden="true"><rect x="1" y="1" width="18" height="18" rx="4" fill="#F0F0EB"/><rect x="5" y="5.4" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="9.15" width="10" height="1.7" rx="0.85" fill="#0A0A0A"/><rect x="5" y="12.9" width="6" height="1.7" rx="0.85" fill="#0A0A0A"/></svg>FLASH<span class="slash">/</span>RESUME</div>
+          <h1 class="page-title">Application ledger.</h1>
+          <div class="page-sub">Application pipeline · engine unreachable</div>
+        </div>
+        <button class="fr-btn"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.6-3.66"/><path d="M12.2 1.4v3h-3"/></svg>Refresh</button>
+      </header>
+      <div class="stats">
+        <div class="stat i-total"><div class="lbl">Total applications</div><div class="val skeleton">–</div></div>
+        <div class="stat i-interview"><div class="lbl">In interview</div><div class="val skeleton">–</div></div>
+        <div class="stat i-offered"><div class="lbl">Offers</div><div class="val skeleton">–</div></div>
+        <div class="stat i-ats" data-level="na"><div class="lbl">Average ATS</div><div class="val skeleton">–</div><div class="signal"><i style="width:0%"></i></div></div>
+      </div>
+      <div class="empty">
+        <div class="empty-title">Can't reach the engine</div>
+        <div class="empty-hint">Is <code>fs serve</code> running? It starts silently at login — run <code>fs autostart enable</code> to re-register it.</div>
+      </div>
+    </div>
+  </div>
+  <div class="proto-caption">DASHBOARD / BACKEND OFFLINE — SKELETON STATS + NEXT STEP</div>
+</div>
+
+<div class="proto-group" id="g-d-modal">
+  <div class="proto-frame dash-frame dash" style="min-height:640px">
+    <div class="wrap" style="opacity:.35;pointer-events:none">
+      <header class="head">
+        <div>
+          <div class="wordmark">FLASH<span class="slash">/</span>RESUME</div>
+          <h1 class="page-title">Application ledger.</h1>
+        </div>
+      </header>
+    </div>
+    <div class="modal open" style="position:absolute;inset:0">
+      <div class="dialog">
+        <div class="dialog-head">
+          <div>
+            <div class="t">Diff report</div>
+            <div class="s">DIGITAL AURA · AI DEVELOPER</div>
+          </div>
+          <div class="tools">
+            <a class="fr-btn" href="#" onclick="return false">Open raw</a>
+            <button class="xbtn" aria-label="Close">×</button>
+          </div>
+        </div>
+        <div class="diff-scroll rendered">
+          <h1>Flash Resume ATS Tailoring Report: Digital Aura – AI Developer</h1>
+          <ul>
+            <li><strong>Evidence-based ATS Score:</strong> 60%</li>
+            <li><strong>Requirement Coverage:</strong> 8 covered, 0 partial, 6 unsupported (14 total)</li>
+            <li><strong>Page Count:</strong> 1 (Verified Single-Page Fit)</li>
+          </ul>
+          <h2>Requirement Evidence Matrix</h2>
+          <table>
+            <thead><tr><th>Priority</th><th>Requirement</th><th>Status</th><th>Method</th></tr></thead>
+            <tbody>
+              <tr><td>required</td><td>LLM-based web apps</td><td><code>COVERED</code></td><td>Bullet edit kept</td></tr>
+              <tr><td>required</td><td>Python (FastAPI/Flask)</td><td><code>COVERED</code></td><td>Existing evidence</td></tr>
+              <tr><td>preferred</td><td>Fine-tuning experience</td><td><code>UNSUPPORTED</code></td><td>Rejected — no evidence</td></tr>
+            </tbody>
+          </table>
+          <h2>Modified Bullets</h2>
+          <ul>
+            <li><strong>Rejected:</strong> “Fine-tuned Llama-3 for retrieval tasks” — <em>not supported by the master resume.</em></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="proto-caption">DASHBOARD / DIFF MODAL — RENDERED MARKDOWN REPORT</div>
+</div>
+
+<div class="proto-group" id="g-d-narrow">
+  <div class="proto-frame dash-frame narrow dash">
+    <div class="wrap" style="max-width:none">
+      <header class="head">
+        <div>
+          <div class="wordmark">FLASH<span class="slash">/</span>RESUME</div>
+          <h1 class="page-title">Application ledger.</h1>
+          <div class="page-sub">Application pipeline</div>
+        </div>
+        <button class="fr-btn"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M12 7a5 5 0 1 1-1.6-3.66"/><path d="M12.2 1.4v3h-3"/></svg>Refresh</button>
+      </header>
+      <div class="stats">
+        <div class="stat i-total"><div class="lbl">Total</div><div class="val">6</div></div>
+        <div class="stat i-interview"><div class="lbl">Interview</div><div class="val">2</div></div>
+        <div class="stat i-offered"><div class="lbl">Offers</div><div class="val">1</div></div>
+        <div class="stat i-ats" data-level="mid"><div class="lbl">Avg ATS</div><div class="val">77<span class="u">%</span></div><div class="signal"><i style="width:77%"></i></div></div>
+      </div>
+      <div class="toolbar" style="flex-direction:column;align-items:stretch">
+        <input class="search" type="search" placeholder="Search company or role…" style="min-width:0">
+        <div class="pills" role="group" style="justify-content:space-between">
+          <button class="pill active">All</button><button class="pill">Applied</button><button class="pill">Interview</button><button class="pill">Offered</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Date</th><th>Company</th><th>Role</th><th>Signal</th><th>Status</th><th>Artifacts</th></tr></thead>
+        <tbody>
+          <tr>
+            <td data-label="Date" class="date">2026-10-17</td>
+            <td data-label="Company" class="cell-company"><div class="company">Digital Aura</div><span class="company-sub">interview_prep</span></td>
+            <td data-label="Role" class="cell-role role">AI Developer</td>
+            <td data-label="Signal"><div class="ats lo"><div class="ats-line"><span class="ats-num">60</span><span class="ats-unit">%</span></div><div class="ats-meter"><i style="width:60%"></i></div></div></td>
+            <td data-label="Status"><select class="status-select applied"><option selected>applied</option></select></td>
+            <td data-label="Artifacts"><div class="artifacts"><a class="artifact" href="#" onclick="return false">PDF</a><button class="artifact">Diff</button></div></td>
+          </tr>
+          <tr>
+            <td data-label="Date" class="date">2026-10-16</td>
+            <td data-label="Company" class="cell-company"><div class="company">Stripe</div><span class="company-sub">truthful</span></td>
+            <td data-label="Role" class="cell-role role">Senior SWE, Payments</td>
+            <td data-label="Signal"><div class="ats hi"><div class="ats-line"><span class="ats-num">91</span><span class="ats-unit">%</span></div><div class="ats-meter"><i style="width:91%"></i></div></div></td>
+            <td data-label="Status"><select class="status-select interview"><option selected>interview</option></select></td>
+            <td data-label="Artifacts"><div class="artifacts"><a class="artifact" href="#" onclick="return false">PDF</a><button class="artifact">Diff</button></div></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pager">
+        <button class="fr-btn" disabled>← Prev</button>
+        <span class="info">PAGE 1 / 1</span>
+        <button class="fr-btn" disabled>Next →</button>
+      </div>
+    </div>
+  </div>
+  <div class="proto-caption">DASHBOARD / NARROW (390px) — STACKED LEDGER ROWS</div>
+</div>
+
+<script>
+document.querySelectorAll(".proto-bar button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".proto-bar button").forEach((b) => b.classList.remove("on"));
+    document.querySelectorAll(".proto-group").forEach((g) => g.classList.remove("on"));
+    btn.classList.add("on");
+    document.getElementById("g-" + btn.dataset.g).classList.add("on");
+  });
+});
+</script>
+</body>
+</html>
