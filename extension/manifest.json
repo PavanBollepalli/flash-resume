@@ -9,7 +9,8 @@
     "128": "icons/icon128.png"
   },
   "permissions": [
-    "storage"
+    "storage",
+    "downloads"
   ],
   "host_permissions": [
     "http://127.0.0.1:13450/*",
@@ -20,11 +21,20 @@
     "default_popup": "popup.html",
     "default_title": "Flash Resume"
   },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["https://*/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*/*"],
+      "js": ["mainworld.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
     }
   ]
 }

@@ -74,3 +74,68 @@ document.addEventListener("DOMContentLoaded", async () => {
     setupCard.style.display = "block";
   }
 });
+
+// Render recent applications (a tiny ?limit=5 request so the popup stays snappy).
+// The card is always visible — it shows an empty state until the first tailor.
+function loadHistoryPreview() {
+  const historyCard = document.getElementById("historyCard");
+  historyCard.style.display = "block";
+  try {
+    fetch(`${API_BASE}/api/history?limit=5`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const apps = data?.applications;
+        if (apps?.length) {
+          displayHistory(apps);
+        } else {
+          document.getElementById("historyList").innerHTML =
+            `<div style="padding:10px 0;font-size:11.5px;color:var(--text-muted);">
+               No applications yet — tailor a resume and it'll show up here.
+             </div>`;
+        }
+      })
+      .catch(() => {
+        document.getElementById("historyList").innerHTML =
+          `<div style="padding:10px 0;font-size:11.5px;color:var(--text-muted);">
+             Engine offline — history unavailable right now.
+           </div>`;
+      });
+  } catch (err) {
+    // ignore — history is a nice-to-have
+  }
+}
+
+function displayHistory(apps) {
+  const list = document.getElementById("historyList");
+  list.innerHTML = apps
+    .map(
+      (app) => `
+      <div style="padding:8px 0;border-bottom:1px solid var(--card-border);
+        display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:11.5px;color:var(--text);
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(app.company)}</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">
+            ${escapeHtml(app.role).slice(0, 30)}${app.role.length > 30 ? "…" : ""} · ${app.date} · ATS ${app.ats_score ?? "?"}%
+          </div>
+        </div>
+        <a class="icon-btn" href="${API_BASE}/api/resume/${app.id}" target="_blank" title="Open PDF">📄</a>
+      </div>`
+    )
+    .join("");
+  // The PDF action is a plain `<a target="_blank">` — the browser opens it in a
+  // new tab natively. No re-download, no JS needed.
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("viewAllHistory").addEventListener("click", () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL("history.html") });
+  });
+  loadHistoryPreview();
+});

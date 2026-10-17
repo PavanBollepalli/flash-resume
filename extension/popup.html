@@ -6,50 +6,52 @@
   <title>Flash Resume</title>
   <style>
     :root {
-      --bg-top: #EBF2FA;
-      --bg-bottom: #ffffff;
-      --card: #ffffff;
-      --card-border: #d7e6f2;
-      --card-shadow: 0 1px 2px rgba(18, 48, 71, 0.04), 0 8px 24px rgba(18, 48, 71, 0.05);
+      /* Dark "ATS signal instrument" theme — shared naming with history.html */
+      --bg-top: #0A1220;
+      --bg-bottom: #0E1B33;
+      --card: #101D33;
+      --card-border: rgba(148, 163, 184, 0.16);
+      --card-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 8px 24px rgba(0,0,0,.45);
 
-      --primary: #05668D;      /* Baltic Blue */
-      --primary-soft: #427AA1; /* Rich Serulian */
-      --primary-glow: rgba(5, 102, 141, 0.22);
+      --primary: #22D3EE;       /* electric cyan — the "flash" */
+      --primary-soft: #38BDF8;
+      --primary-glow: rgba(34, 211, 238, 0.24);
 
-      --success: #679436;      /* Sage Green */
-      --success-bg: rgba(103, 148, 54, 0.1);
-      --success-border: rgba(103, 148, 54, 0.28);
+      --success: #4ADE80;
+      --success-bg: rgba(74, 222, 128, 0.12);
+      --success-border: rgba(74, 222, 128, 0.32);
+      --warn: #FACC15;
+      --danger: #FB7185;
+      --danger-bg: rgba(251, 113, 133, 0.12);
+      --danger-border: rgba(251, 113, 133, 0.3);
 
-      --danger: #C1443C;
-      --danger-bg: rgba(193, 68, 60, 0.09);
-      --danger-border: rgba(193, 68, 60, 0.26);
-
-      --text: #10293D;
-      --text-muted: #4d7089;
-      --text-faint: #8aa6ba;
-
-      --input-bg: #F4F9FC;
+      --text: #E6EDF7;
+      --text-muted: #93A6C2;
+      --text-faint: #5B6D8C;
+      --input-bg: #0C1730;
       --radius: 14px;
+
+      --display: "Bahnschrift", "Segoe UI Variable", "Segoe UI", sans-serif;
+      --body: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      --mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
     }
 
     body.interview-mode {
-      --primary: #b42318;
-      --primary-soft: #d92d20;
-      --primary-glow: rgba(180, 35, 24, 0.22);
-      --bg-top: #fff1f0;
-      --card-border: #f3c7c3;
+      --primary: #FB7185;
+      --primary-soft: #F87171;
+      --primary-glow: rgba(251, 113, 133, 0.24);
+      --bg-top: #170B12;
+      --bg-bottom: #1E0F1B;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       width: 380px;
-      background: linear-gradient(165deg, var(--bg-top) 0%, var(--bg-bottom) 65%);
+      font-family: var(--body);
+      background:
+        radial-gradient(320px 160px at 82% -10%, rgba(34,211,238,.10), transparent 60%),
+        linear-gradient(165deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
       color: var(--text);
       padding: 16px;
       font-size: 13px;
@@ -66,90 +68,66 @@
       border-bottom: 1px solid var(--card-border);
     }
 
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-    }
+    .brand { display: flex; align-items: center; gap: 9px; }
 
     .brand-logo {
       font-size: 17px;
-      width: 30px;
-      height: 30px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
       border-radius: 9px;
       background: linear-gradient(135deg, var(--primary), var(--primary-soft));
       box-shadow: 0 4px 14px var(--primary-glow);
     }
 
     .brand h1 {
-      font-size: 15px;
-      font-weight: 800;
-      letter-spacing: -0.02em;
+      font-family: var(--display);
+      font-size: 15px; font-weight: 800; letter-spacing: -0.02em;
       color: var(--primary);
     }
 
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+    .header-actions { display: flex; align-items: center; gap: 8px; }
 
     .icon-btn {
       background: var(--input-bg);
       border: 1px solid var(--card-border);
       border-radius: 8px;
-      width: 28px;
-      height: 28px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 700;
+      width: 28px; height: 28px;
+      display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 13px; font-weight: 700;
       color: var(--text-muted);
       transition: all 0.15s;
     }
 
     .icon-btn:hover {
-      background: rgba(5, 102, 141, 0.1);
+      background: var(--primary-glow);
       border-color: var(--primary);
       color: var(--primary);
     }
 
     .status-badge {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 4px 9px;
-      border-radius: 999px;
-      background: var(--success-bg);
-      color: var(--success);
+      display: flex; align-items: center; gap: 6px;
+      font-family: var(--mono);
+      font-size: 10.5px; font-weight: 700; letter-spacing: .02em;
+      padding: 4px 9px; border-radius: 999px;
+      background: var(--success-bg); color: var(--success);
       border: 1px solid var(--success-border);
     }
 
     .status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
+      width: 7px; height: 7px; border-radius: 50%;
       background: var(--success);
       animation: pulse 2s infinite;
-      box-shadow: 0 0 8px rgba(103, 148, 54, 0.6);
+      box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
     }
 
     .status-badge.offline {
-      background: var(--danger-bg);
-      color: var(--danger);
+      background: var(--danger-bg); color: var(--danger);
       border-color: var(--danger-border);
     }
 
     .status-badge.offline .status-dot {
       background: var(--danger);
-      box-shadow: 0 0 8px rgba(193, 68, 60, 0.6);
+      box-shadow: 0 0 8px rgba(251, 113, 133, 0.6);
       animation: none;
     }
 
@@ -168,16 +146,12 @@
       transition: border-color 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
     }
 
-    .card:focus-within {
-      border-color: var(--primary-soft);
-    }
+    .card:focus-within { border-color: var(--primary-soft); }
 
     .mode-switch {
       position: relative;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      padding: 5px;
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 8px; padding: 5px;
       background: var(--input-bg);
       border: 1px solid var(--card-border);
       border-radius: 14px;
@@ -185,24 +159,16 @@
     }
 
     .mode-option {
-      position: relative;
-      z-index: 1;
-      min-height: 82px;
-      padding: 10px 9px;
-      border: 1px solid transparent;
-      border-radius: 10px;
-      background: transparent;
-      color: var(--text-muted);
-      text-align: left;
-      cursor: pointer;
+      position: relative; z-index: 1;
+      min-height: 82px; padding: 10px 9px;
+      border: 1px solid transparent; border-radius: 10px;
+      background: transparent; color: var(--text-muted);
+      text-align: left; cursor: pointer; font-family: var(--body);
       transition: color 0.25s ease, transform 0.25s ease, background 0.35s ease,
         border-color 0.35s ease, box-shadow 0.35s ease;
     }
 
-    .mode-option:hover {
-      transform: translateY(-1px);
-      color: var(--text);
-    }
+    .mode-option:hover { transform: translateY(-1px); color: var(--text); }
 
     .mode-option.active {
       background: var(--card);
@@ -212,86 +178,53 @@
     }
 
     .mode-option-icon {
-      display: block;
-      margin-bottom: 3px;
-      color: var(--primary);
-      font-size: 18px;
-      line-height: 1;
+      display: block; margin-bottom: 3px;
+      color: var(--primary); font-size: 18px; line-height: 1;
       transition: color 0.35s ease;
     }
 
     .mode-option-name {
-      display: block;
-      font-size: 11.5px;
-      font-weight: 800;
-      line-height: 1.2;
+      display: block; font-size: 11.5px; font-weight: 800; line-height: 1.2;
     }
 
     .mode-option-copy {
-      display: block;
-      margin-top: 4px;
-      font-size: 10px;
-      line-height: 1.25;
+      display: block; margin-top: 4px; font-size: 10px; line-height: 1.25;
       color: var(--text-muted);
     }
 
     .mode-description {
-      display: flex;
-      align-items: flex-start;
-      gap: 7px;
-      margin-top: 8px;
-      color: var(--text-muted);
-      font-size: 10.5px;
-      line-height: 1.35;
+      display: flex; align-items: flex-start; gap: 7px;
+      margin-top: 8px; color: var(--text-muted);
+      font-size: 10.5px; line-height: 1.35;
       transition: color 0.35s ease;
     }
 
     .mode-description::before {
       content: "✓";
       flex: 0 0 auto;
-      width: 15px;
-      height: 15px;
-      border-radius: 50%;
-      background: var(--primary-glow);
-      color: var(--primary);
-      font-size: 10px;
-      font-weight: 900;
-      text-align: center;
-      line-height: 15px;
+      width: 15px; height: 15px; border-radius: 50%;
+      background: var(--primary-glow); color: var(--primary);
+      font-size: 10px; font-weight: 900; text-align: center; line-height: 15px;
       transition: background 0.35s ease, color 0.35s ease;
     }
 
     .mode-input-hidden {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      opacity: 0;
-      pointer-events: none;
+      position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;
     }
 
     .card-title {
-      font-size: 10px;
-      text-transform: uppercase;
-      font-weight: 800;
-      letter-spacing: 0.08em;
+      font-family: var(--display);
+      font-size: 10px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.08em;
       color: var(--primary);
       margin-bottom: 10px;
     }
 
-    .field-group {
-      margin-bottom: 10px;
-    }
-
-    .field-group:last-child {
-      margin-bottom: 0;
-    }
+    .field-group { margin-bottom: 10px; }
+    .field-group:last-child { margin-bottom: 0; }
 
     label {
-      display: block;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-muted);
-      margin-bottom: 4px;
+      display: block; font-size: 11px; font-weight: 600;
+      color: var(--text-muted); margin-bottom: 4px;
     }
 
     input {
@@ -299,10 +232,8 @@
       background: var(--input-bg);
       border: 1px solid var(--card-border);
       color: var(--text);
-      padding: 8px 10px;
-      border-radius: 10px;
-      font-size: 12px;
-      outline: none;
+      padding: 8px 10px; border-radius: 10px;
+      font-size: 12px; outline: none; font-family: var(--body);
       transition: border-color 0.2s, box-shadow 0.2s;
     }
 
@@ -310,81 +241,51 @@
 
     input:focus, textarea:focus {
       border-color: var(--primary-soft);
-      box-shadow: 0 0 0 3px rgba(5, 102, 141, 0.14);
+      box-shadow: 0 0 0 3px var(--primary-glow);
     }
 
     .notification {
-      padding: 9px 12px;
-      border-radius: 10px;
-      font-size: 11.5px;
-      margin-bottom: 12px;
-      display: none;
+      padding: 9px 12px; border-radius: 10px;
+      font-size: 11.5px; margin-bottom: 12px; display: none;
     }
 
     .notification.warn {
-      background: var(--danger-bg);
-      border: 1px solid var(--danger-border);
-      color: var(--danger);
-      display: block;
+      background: var(--danger-bg); border: 1px solid var(--danger-border);
+      color: var(--danger); display: block;
     }
 
     .notification.warn code {
-      background: rgba(193, 68, 60, 0.16);
-      padding: 1px 5px;
-      border-radius: 4px;
-      font-weight: 700;
-      color: #8f271f;
+      background: var(--danger-bg);
+      padding: 1px 5px; border-radius: 4px; font-weight: 700; color: var(--danger);
     }
 
-    .setup-card {
-      display: none;
-    }
+    .setup-card { display: none; }
 
     .footer-links {
-      display: flex;
-      justify-content: center;
-      gap: 14px;
-      margin-top: 12px;
-      font-size: 11px;
+      display: flex; justify-content: center; gap: 14px; margin-top: 12px; font-size: 11px;
     }
 
     .footer-links button {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 11px;
-      cursor: pointer;
-      padding: 2px;
-      text-decoration: underline dotted;
+      background: none; border: none;
+      color: var(--text-muted); font-size: 11px; cursor: pointer; padding: 2px;
+      text-decoration: underline dotted; font-family: var(--body);
     }
 
-    .footer-links button:hover {
-      color: var(--primary);
-    }
+    .footer-links button:hover { color: var(--primary); }
 
-    /* How-to guide panel */
-    .guide {
-      display: none;
-    }
+    .guide { display: none; }
 
     .guide ol {
-      margin: 0;
-      padding-left: 18px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--text);
+      margin: 0; padding-left: 18px;
+      display: flex; flex-direction: column; gap: 8px;
+      font-size: 12px; color: var(--text);
     }
 
-    .guide li b {
-      color: var(--primary);
-    }
+    .guide li b { color: var(--primary); }
 
     @media (prefers-reduced-motion: reduce) {
       *, .status-dot {
-        animation: none !important;
-        transition: none !important;
+        animation: none !important; transition: none !important;
       }
     }
   </style>
@@ -459,6 +360,15 @@
       </div>
     </div>
   </main>
+
+  <!-- Application History Card (recent 5 preview — scales via full-page view) -->
+  <div id="historyCard" class="card" style="display: none;">
+    <div class="card-title">Recent Applications</div>
+    <div id="historyList" style="max-height: 200px; overflow-y: auto;"></div>
+    <button id="viewAllHistory" class="icon-btn" style="width: 100%; margin-top: 8px;">
+      🔍 View all →
+    </button>
+  </div>
 
   <div class="footer-links">
     <button id="reopenGuide">❓ How to use</button>
