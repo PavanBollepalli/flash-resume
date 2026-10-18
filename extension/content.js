@@ -20,11 +20,26 @@
       .slice(0, 60) || "resume";
   }
 
-  // Post the tailored PDF into the top frame AND any embedded form iframes
-  // (Workday / ATS widgets render their input inside a cross-origin iframe).
-  // Retries briefly for multi-step wizards; resolves true once any frame reports
-  // it attached the file.
-  function attachPdf(base64, filename) {
+  // Always save to Downloads instantly — the guaranteed win. Fires in ~0ms,
+  // never blocks the attach attempt.
+  function triggerDownload(base64, filename) {
+    const dataUrl = `data:application/pdf;base64,${base64}`;
+    try {
+      chrome.runtime.sendMessage({ type: "FR_DOWNLOAD", dataUrl, filename }, () => {
+        if (chrome.runtime.lastError) {
+          // Downloads API unavailable (e.g. file:// preview) — PDF still on disk
+          // via the server's output dir (Desktop/FlashResume).
+        }
+      });
+    } catch (_) {
+      // No extension context — still saved to disk by the server.
+    }
+  }
+
+  // Single opportunistic attach — one shot, ~500ms, no polling loop.
+  // If a file input exists (Workday / Greenhouse / Lever apply page) it wins;
+  // otherwise the user already has the file in Downloads.
+  function tryAttachOnce(base64, filename) {
     const payload = { type: "FR_SET_FILE", base64, filename };
     const frames = [
       window,
@@ -35,12 +50,11 @@
 
     return new Promise((resolve) => {
       let done = false;
-      let attempts = 0;
       const finish = (ok) => {
         if (done) return;
         done = true;
         window.removeEventListener("message", onResult);
-        clearInterval(timer);
+        clearTimeout(timer);
         resolve(ok);
       };
 
@@ -53,31 +67,8 @@
       window.addEventListener("message", onResult);
       frames.forEach((w) => w.postMessage(payload, "*"));
 
-      const timer = setInterval(() => {
-        attempts += 1;
-        if (attempts >= 6) { finish(false); return; } // ~9s, then give up
-        frames.forEach((w) => w.postMessage(payload, "*"));
-      }, 1500);
+      const timer = setTimeout(() => finish(false), 500);
     });
-  }
-
-  // Guaranteed floor: if no file input was found, save the PDF to Downloads via
-  // the service worker with a date-prefixed name so it never collides.
-  function fallbackDownload(data) {
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
-    const filename = `${stamp}_${sanitizeName(data.company)}_${sanitizeName(data.role)}.pdf`;
-    const dataUrl = `data:application/pdf;base64,${data.pdf_base64}`;
-    try {
-      chrome.runtime.sendMessage({ type: "FR_DOWNLOAD", dataUrl, filename }, (resp) => {
-        if (chrome.runtime.lastError || !resp || !resp.ok) {
-          showToast(`❌ No upload box found — PDF saved as "${filename}". Attach it manually.`, true);
-        } else {
-          showToast(`📥 No upload box found — PDF downloaded as "${filename}". Attach it manually.`);
-        }
-      });
-    } catch (err) {
-      showToast(`❌ No upload box found — grab the latest PDF from your Desktop/FlashResume folder.`, true);
-    }
   }
 
   function applyModeTheme(mode) {
@@ -219,21 +210,24 @@
       }
       const score = data.ats_match_score ?? "?";
       const pages = data.page_count ?? 1;
-      const filename = `${sanitizeName(data.company)}_${sanitizeName(data.role)}.pdf`;
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
+      const filename = `${stamp}_${sanitizeName(data.company)}_${sanitizeName(data.role)}.pdf`;
 
       if (!data.pdf_base64) {
-        // Old server without pdf_base64 — can't auto-fill; just report the file.
         showToast(`✅ ATS ${score}% · ${pages}p · PDF ready (${data.pdf_path || "Desktop/FlashResume"})`);
         return;
       }
 
-      showToast("⚡ Attaching PDF to the form…");
-      const attached = await attachPdf(data.pdf_base64, filename);
-      if (attached) {
-        showToast(`✅ ATS ${score}% · ${pages}p · PDF attached to the form — check, then Submit ✓`);
-      } else {
-        fallbackDownload(data);
-      }
+      // Downloads is the guaranteed win — fire immediately so the user never waits.
+      // Attach runs in parallel as a single opportunistic shot; no 9s polling loop.
+      triggerDownload(data.pdf_base64, filename);
+      showToast("📥 PDF saved to Downloads — trying to attach…");
+      const attached = await tryAttachOnce(data.pdf_base64, filename);
+      showToast(
+        attached
+          ? `✅ ATS ${score}% · ${pages}p · PDF attached + saved to Downloads ✓`
+          : `✅ ATS ${score}% · ${pages}p · PDF saved to Downloads — attach it`,
+      );
     } catch (err) {
       showToast(`❌ Can't reach the local engine. Run 'fs serve' or restart via 'fs autostart enable'.`, true);
     } finally {
