@@ -96,9 +96,21 @@ main, .pop-section { display: block; }
 }
 .status-badge #statusText { overflow: hidden; text-overflow: ellipsis; }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fr-success); animation: fr-blink 2.2s ease-in-out infinite; }
-.status-badge.offline { color: var(--fr-danger); border-color: rgba(251,113,133,.35); }
+.status-badge.offline { color: var(--fr-danger); border-color: color-mix(in srgb, var(--fr-danger) 35%, transparent); }
 .status-badge.offline .dot { background: var(--fr-danger); animation: none; }
 @keyframes fr-blink { 50% { opacity: .35; } }
+
+/* Identity line — whose resume is loaded + which extension build is active. */
+.identity {
+  display: flex; align-items: center; gap: 7px; margin-top: 11px; min-width: 0;
+  font: 500 10px var(--fr-mono); letter-spacing: .09em; text-transform: uppercase;
+  color: var(--fr-text-subtle);
+}
+.identity #identityName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.identity .sep { flex: 0 0 auto; color: var(--fr-border); }
+.identity .ver { flex: 0 0 auto; color: var(--fr-text-muted); }
+/* No chrome.runtime (opened on file://) → no version to show; drop the dot too. */
+.identity.no-version .sep { display: none; }
 
 .masthead-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
 .guide-btn {
@@ -118,7 +130,7 @@ main, .pop-section { display: block; }
   margin-bottom: var(--fr-space-4); line-height: 1.55;
 }
 .notice code { font-family: var(--fr-mono); font-size: 11px; background: var(--fr-surface-raised); padding: 1px 5px; border-radius: 4px; color: var(--fr-text); }
-.notice-danger { border-color: rgba(251,113,133,.35); color: var(--fr-danger); }
+.notice-danger { border-color: color-mix(in srgb, var(--fr-danger) 35%, transparent); color: var(--fr-danger); }
 
 /* Section headers */
 .section-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
@@ -189,10 +201,8 @@ main, .pop-section { display: block; }
   <header class="masthead">
     <div class="brand">
       <svg class="brand-mark" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-        <rect x="1" y="1" width="18" height="18" rx="4" style="fill:var(--fr-accent)"/>
-        <rect x="5" y="5.4" width="10" height="1.7" rx="0.85" style="fill:var(--fr-accent-text)"/>
-        <rect x="5" y="9.15" width="10" height="1.7" rx="0.85" style="fill:var(--fr-accent-text)"/>
-        <rect x="5" y="12.9" width="6" height="1.7" rx="0.85" style="fill:var(--fr-accent-text)"/>
+        <rect x="1" y="1" width="18" height="18" rx="4.5" style="fill:var(--fr-accent)"/>
+        <path d="M12.2 2.6 4.8 11.3H9.1L7.7 17.7 15.6 8.4H10.9Z" style="fill:var(--fr-accent-text)"/>
       </svg>
       <div>
         <h1>Flash Resume</h1>
@@ -208,6 +218,14 @@ main, .pop-section { display: block; }
     </div>
   </header>
 
+  <!-- Whose resume is loaded + which build is running. The ACTIVE/INACTIVE
+       answer lives in the badge above; this line says what "active" refers to. -->
+  <div class="identity">
+    <span id="identityName">Checking…</span>
+    <span class="sep" aria-hidden="true">·</span>
+    <span class="ver" id="identityVersion"></span>
+  </div>
+
   <hr class="rule">
 
   <!-- Offline / engine status -->
@@ -219,7 +237,7 @@ main, .pop-section { display: block; }
        The server owns provider/key/save-folder (set by `fs setup`), so the
        browser no longer runs its own setup wizard. -->
   <div id="setupCard" class="notice setup-card" style="display:none;">
-    Finish server setup — open a terminal and run <code>fs setup</code> once to add your API key and choose a save folder. Everything is configured on the server, not in the browser.
+    Finish server setup — open a terminal and run <code>fs setup</code> once to add your API key. Everything is configured on the server, not in the browser.
   </div>
 
   <main>
@@ -230,7 +248,7 @@ main, .pop-section { display: block; }
         <li>Click the <b>Flash Resume</b> button on the right edge.</li>
         <li>Only the selected job description is sent to the local engine — no full-page parsing.</li>
         <li>Use this popup to choose between Truthful and Interview mode.</li>
-        <li>The 1-page PDF is saved to your configured folder automatically.</li>
+        <li>The 1-page PDF is saved to <b>Desktop/FlashResume</b> and dropped straight into the form's upload box.</li>
       </ol>
     </div>
 

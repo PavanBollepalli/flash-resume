@@ -101,14 +101,12 @@ def main(
     """Flash Resume command-line interface."""
 
 
-# Internal signal so `fs setup` can reuse init_cmd's wizard without re-asking
-# for the save folder (setup already prompted for it). A one-element list keeps
-# the mutation local without a global statement.
-_SKIP_OUTPUT_PROMPT = [False]
-
-
-def _skip_output_prompt(value: bool) -> None:
-    _SKIP_OUTPUT_PROMPT[0] = value
+# Every tailored PDF + diff.md lands in one fixed, predictable place. There is
+# nothing to choose and nothing to remember: the CLI and the extension agree on
+# this folder, so setup never has to ask where files should be saved.
+def _default_output_dir() -> Path:
+    """The single fixed home for tailored PDFs: ``~/Desktop/FlashResume``."""
+    return Path.home() / "Desktop" / "FlashResume"
 
 
 @app.command(name="init")
@@ -197,17 +195,13 @@ def init_cmd() -> None:
         custom_path = Prompt.ask("Enter path to your master_resume.json")
         resume_path_str = str(_normalize_path(custom_path))
 
-    # Step 3: Output Directory (skipped when `fs setup` already asked for it).
-    # The flag is a module-level, non-CLI signal set by setup_cmd so this wizard
-    # can run standalone without re-prompting the save folder.
-    if not _SKIP_OUTPUT_PROMPT[0]:
-        console.print("\n[bold]Step 3: Output Directory[/bold]")
-        default_out = cfg.output_dir or str(Path.home() / "Desktop" / "FlashResume")
-        out_dir_str = Prompt.ask("Where should tailored PDFs be saved?", default=default_out)
-        Path(out_dir_str).mkdir(parents=True, exist_ok=True)
-        cfg.output_dir = out_dir_str
-    else:
-        out_dir_str = cfg.output_dir
+    # Step 3: Output Directory is fixed — no prompt. Tailored PDFs always land
+    # in ~/Desktop/FlashResume (timestamp-prefixed, newest first) so the user
+    # never picks a folder or hunts for the file later.
+    out_dir_str = str(_default_output_dir())
+    Path(out_dir_str).mkdir(parents=True, exist_ok=True)
+    cfg.output_dir = out_dir_str
+    console.print(f"\n[dim]Tailored PDFs are saved to {out_dir_str} (fixed).[/dim]")
 
     # Save Config
     cfg.master_resume_path = resume_path_str
@@ -561,14 +555,12 @@ def setup_cmd() -> None:
     save_config(cfg)
     console.print(f"[green]✓ Provider and key saved to {get_config_file()}[/green]")
 
-    # 3. Save folder for tailored PDFs (mirror init_cmd's output-dir prompt)
-    console.print("\n[bold]Step 3: Save Folder[/bold]")
-    default_out = cfg.output_dir or str(Path.home() / "Desktop" / "FlashResume")
-    out_dir_str = Prompt.ask("Where should tailored PDFs be saved?", default=default_out)
-    Path(out_dir_str).mkdir(parents=True, exist_ok=True)
-    cfg.output_dir = out_dir_str
+    # 3. Save folder — fixed to Desktop/FlashResume, no prompt. The CLI and the
+    # extension always agree on where tailored PDFs live.
+    cfg.output_dir = str(_default_output_dir())
+    Path(cfg.output_dir).mkdir(parents=True, exist_ok=True)
     save_config(cfg)
-    console.print(f"[green]✓ Tailored PDFs will be saved to {cfg.output_dir}[/green]")
+    console.print(f"[green]✓ Tailored PDFs are saved to {cfg.output_dir} (fixed).[/green]")
 
     # 4. Master resume (reuse init wizard if not yet configured)
     console.print("\n[bold]Step 4: Master Resume[/bold]")
@@ -576,11 +568,7 @@ def setup_cmd() -> None:
         console.print(f"[green]✓ Master resume already configured: {cfg.master_resume_path}[/green]")
     else:
         console.print("[yellow]No master resume configured yet — running the init wizard.[/yellow]")
-        _skip_output_prompt(True)
-        try:
-            init_cmd()
-        finally:
-            _skip_output_prompt(False)
+        init_cmd()
 
     # 5. Autostart
     console.print("\n[bold]Step 5: Background Engine Autostart[/bold]")

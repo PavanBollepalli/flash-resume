@@ -13,6 +13,15 @@ function chromeReady() {
   }
 }
 
+// The loaded extension build, so "Active" can be paired with what's running.
+function extVersion() {
+  try {
+    return `v${chrome.runtime.getManifest().version}`;
+  } catch (_) {
+    return "";
+  }
+}
+
 // Defensive ATS normalisation: never render null/missing as 0, clamp to 0–100.
 function normScore(v) {
   if (v == null || v === "") return null;
@@ -38,6 +47,8 @@ const PDF_ICON =
 document.addEventListener("DOMContentLoaded", async () => {
   const statusBadge = document.getElementById("statusBadge");
   const statusText = document.getElementById("statusText");
+  const identityName = document.getElementById("identityName");
+  const identityVersion = document.getElementById("identityVersion");
   const offlineNotice = document.getElementById("offlineNotice");
   const setupCard = document.getElementById("setupCard");
   const modeInput = document.getElementById("modeInput");
@@ -87,22 +98,32 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  // The badge answers one question — is this working? — so it states
+  // ACTIVE / INACTIVE instead of echoing the candidate's name. Whose resume is
+  // loaded and which build is running go on the identity line beneath it.
+  const setStatus = (active) => {
+    statusBadge.classList.toggle("offline", !active);
+    statusText.textContent = active ? "Active" : "Inactive";
+    const ver = extVersion();
+    identityVersion.textContent = ver;
+    identityVersion.parentElement.classList.toggle("no-version", !ver);
+  };
+
   try {
     const res = await fetch(`${API_BASE}/api/status`);
     if (!res.ok) throw new Error("Server error");
 
     const data = await res.json();
-    statusBadge.classList.remove("offline");
-    statusText.textContent = data.candidate_name
-      ? `${data.candidate_name} · ready`
-      : `Engine ready · ${data.provider || "local"}`;
+    setStatus(true);
+    identityName.textContent = data.candidate_name || "Engine ready";
     offlineNotice.style.display = "none";
 
     const hasActiveKey = data.provider === "groq" ? data.has_groq_key : data.has_api_key;
     if (!hasActiveKey) setupCard.style.display = "block";
+    if (!data.master_resume_configured) identityName.textContent = "No master resume yet";
   } catch (err) {
-    statusBadge.classList.add("offline");
-    statusText.textContent = "Offline";
+    setStatus(false);
+    identityName.textContent = "Engine not running";
     offlineNotice.style.display = "block";
     setupCard.style.display = "block";
   }

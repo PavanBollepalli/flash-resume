@@ -1,5 +1,6 @@
 """Tests for the SQLite application-history tracker and its API endpoints."""
 
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -75,7 +76,9 @@ def test_history_endpoint(client: TestClient, db: Path):
     assert body["total"] == 1
     app = body["applications"][0]
     assert app["company"] == "Stripe"
-    assert app["date"] == "2026-10-17"
+    # created_at defaults to CURRENT_TIMESTAMP, so assert against today rather
+    # than a pinned date — otherwise this breaks every time the day rolls over.
+    assert app["date"] == date.today().isoformat()
     assert app["status"] == "applied"
 
 
