@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import base64
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -193,6 +194,7 @@ def tailor_resume(req: TailorRequest):
             company_override=req.company,
             role_override=req.role,
             interview_mode=req.mode == "interview_prep",
+            source="extension",
         )
 
         pdf_bytes = Path(result.pdf_path).read_bytes()
@@ -214,3 +216,124 @@ def tailor_resume(req: TailorRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Application history / resume retrieval
+# ---------------------------------------------------------------------------
+
+def _fmt_date(value: str) -> str:
+    """Return a YYYY-MM-DD date from a SQLite timestamp string."""
+    try:
+        return datetime.fromisoformat(str(value)).strftime("%Y-%m-%d")
+    except ValueError:
+        return str(value)[:10]
+
+
+def _application_payload(app: dict) -> dict:
+    return {
+        "id": app["id"],
+        "date": _fmt_date(app["created_at"]),
+        "company": app["company"],
+        "role": app["role"],
+        "ats_score": app["ats_score"],
+        "filename": app["pdf_filename"],
+        "mode": app["mode"],
+        "source": app["source"],
+        "status": app["status"],
+    }
+
+
+class HistoryStatusRequest(BaseModel):
+    status: Literal["applied", "interview", "offered"]
+
+
+@app.get("/api/history")
+def get_history(
+    limit: int = 10,
+    offset: int = 0,
+    company: Optional[str] = None,
+    role: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    """Return paginated, filterable application history (newest first)."""
+    from flash_resume.services.tracking import (
+        count_applications,
+        get_recent_applications,
+    )
+
+    rows = get_recent_applications(
+        limit=limit,
+        offset=offset,
+        company_filter=company,
+        role_filter=role,
+        status_filter=status,
+    )
+    total = count_applications(
+        company_filter=company, role_filter=role, status_filter=status
+    )
+    return {
+        "applications": [_application_payload(r) for r in rows],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
+
+
+@app.get("/api/resume/{application_id}")
+def get_resume_pdf(application_id: int):
+    """Re-download or view the PDF for a past application."""
+    from flash_resume.services.tracking import get_application_by_id
+
+    app = get_application_by_id(application_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    pdf_path = Path(load_config().output_dir) / app["pdf_filename"]
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="PDF no longer exists on disk")
+    return Response(
+        content=pdf_path.read_bytes(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{pdf_path.name}"'},
+    )
+
+
+@app.get("/api/resume/{application_id}/diff")
+def get_resume_diff(application_id: int):
+    """View/export the diff.md report for a past application."""
+    from flash_resume.services.tracking import get_application_by_id
+
+    app = get_application_by_id(application_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    base = Path(load_config().output_dir)
+    diff_path = base / (Path(app["pdf_filename"]).stem + ".diff.md")
+    if not diff_path.exists():
+        raise HTTPException(status_code=404, detail="diff.md no longer exists on disk")
+    return Response(
+        content=diff_path.read_text(encoding="utf-8"),
+        media_type="text/plain",
+        headers={"Content-Disposition": f'inline; filename="{diff_path.name}"'},
+    )
+
+
+@app.patch("/api/history/{application_id}")
+def set_history_status(application_id: int, req: HistoryStatusRequest):
+    """Update an application's pipeline status (applied | interview | offered)."""
+    from flash_resume.services.tracking import (
+        get_application_by_id,
+        update_application_status,
+    )
+
+    if not get_application_by_id(application_id):
+        raise HTTPException(status_code=404, detail="Application not found")
+    update_application_status(application_id, req.status)
+    return {"success": True, "status": req.status}
+
+
+@app.get("/api/history/stats")
+def get_history_stats(company: Optional[str] = None, role: Optional[str] = None):
+    """One-glance pipeline stats for the history header."""
+    from flash_resume.services.tracking import get_stats
+
+    return get_stats(company_filter=company, role_filter=role)

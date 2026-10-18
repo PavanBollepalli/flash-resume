@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import webbrowser
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -98,6 +101,14 @@ def main(
     """Flash Resume command-line interface."""
 
 
+# Every tailored PDF + diff.md lands in one fixed, predictable place. There is
+# nothing to choose and nothing to remember: the CLI and the extension agree on
+# this folder, so setup never has to ask where files should be saved.
+def _default_output_dir() -> Path:
+    """The single fixed home for tailored PDFs: ``~/Desktop/FlashResume``."""
+    return Path.home() / "Desktop" / "FlashResume"
+
+
 @app.command(name="init")
 def init_cmd() -> None:
     """Interactive first-time setup wizard."""
@@ -184,15 +195,16 @@ def init_cmd() -> None:
         custom_path = Prompt.ask("Enter path to your master_resume.json")
         resume_path_str = str(_normalize_path(custom_path))
 
-    # Step 3: Output Directory
-    console.print("\n[bold]Step 3: Output Directory[/bold]")
-    default_out = cfg.output_dir or str(Path.home() / "Resumes")
-    out_dir_str = Prompt.ask("Where should tailored PDFs be saved?", default=default_out)
+    # Step 3: Output Directory is fixed — no prompt. Tailored PDFs always land
+    # in ~/Desktop/FlashResume (timestamp-prefixed, newest first) so the user
+    # never picks a folder or hunts for the file later.
+    out_dir_str = str(_default_output_dir())
     Path(out_dir_str).mkdir(parents=True, exist_ok=True)
+    cfg.output_dir = out_dir_str
+    console.print(f"\n[dim]Tailored PDFs are saved to {out_dir_str} (fixed).[/dim]")
 
     # Save Config
     cfg.master_resume_path = resume_path_str
-    cfg.output_dir = out_dir_str
     save_config(cfg)
     console.print(f"\n[bold green]✓ Configuration saved to {get_config_file()}[/bold green]")
 
@@ -543,14 +555,12 @@ def setup_cmd() -> None:
     save_config(cfg)
     console.print(f"[green]✓ Provider and key saved to {get_config_file()}[/green]")
 
-    # 3. Save folder for tailored PDFs (mirror init_cmd's output-dir prompt)
-    console.print("\n[bold]Step 3: Save Folder[/bold]")
-    default_out = cfg.output_dir or str(Path.home() / "Resumes")
-    out_dir_str = Prompt.ask("Where should tailored PDFs be saved?", default=default_out)
-    Path(out_dir_str).mkdir(parents=True, exist_ok=True)
-    cfg.output_dir = out_dir_str
+    # 3. Save folder — fixed to Desktop/FlashResume, no prompt. The CLI and the
+    # extension always agree on where tailored PDFs live.
+    cfg.output_dir = str(_default_output_dir())
+    Path(cfg.output_dir).mkdir(parents=True, exist_ok=True)
     save_config(cfg)
-    console.print(f"[green]✓ Tailored PDFs will be saved to {cfg.output_dir}[/green]")
+    console.print(f"[green]✓ Tailored PDFs are saved to {cfg.output_dir} (fixed).[/green]")
 
     # 4. Master resume (reuse init wizard if not yet configured)
     console.print("\n[bold]Step 4: Master Resume[/bold]")
@@ -677,6 +687,108 @@ def extension_update_cmd() -> None:
         "[yellow]Open chrome://extensions/ and click Reload on Flash Resume "
         "to activate the update.[/yellow]"
     )
+
+
+@app.command(name="history")
+def history_cmd(
+    limit: int = typer.Option(20, "--limit", "-n", help="Number of rows to show"),
+    company: Optional[str] = typer.Option(None, "--company", "-c", help="Filter by company"),
+    role: Optional[str] = typer.Option(None, "--role", "-r", help="Filter by role"),
+    status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter by status"),
+) -> None:
+    """Show application history."""
+    from flash_resume.services.tracking import get_recent_applications
+
+    apps = get_recent_applications(
+        limit=limit, company_filter=company, role_filter=role, status_filter=status
+    )
+    if not apps:
+        console.print("[yellow]No application history found.[/yellow]")
+        raise typer.Exit()
+
+    table = Table(title=f"Application History ({len(apps)} entries)")
+    table.add_column("ID", style="dim", justify="right")
+    table.add_column("Date", style="cyan", width=16)
+    table.add_column("Company", style="green")
+    table.add_column("Role", style="yellow")
+    table.add_column("ATS", style="blue", justify="right")
+    table.add_column("Status", style="magenta")
+    table.add_column("Source", style="dim")
+    for app in apps:
+        table.add_row(
+            str(app["id"]),
+            datetime.fromisoformat(app["created_at"]).strftime("%Y-%m-%d %H:%M"),
+            app["company"],
+            (app["role"][:40] + "...") if len(app["role"]) > 40 else app["role"],
+            f"{app['ats_score']}%" if app["ats_score"] is not None else "-",
+            app["status"],
+            app["source"],
+        )
+    console.print(table)
+
+
+@app.command(name="reveal")
+def reveal_cmd(
+    latest: bool = typer.Option(False, "--latest", "-l", help="Select the latest PDF in the folder"),
+) -> None:
+    """Open the FlashResume folder (latest PDF selected when --latest)."""
+    cfg = load_config()
+    out = Path(cfg.output_dir)
+    if not out.exists():
+        console.print("[yellow]No output folder yet — run 'fs tailor' first.[/yellow]")
+        raise typer.Exit()
+
+    target = out
+    if latest:
+        from flash_resume.services.tracking import get_recent_applications
+        apps = get_recent_applications(limit=1)
+        if apps:
+            target = out / apps[0]["pdf_filename"]
+
+    if os.name == "nt":
+        subprocess.Popen(["explorer", "/select,", str(target)])
+    else:
+        subprocess.Popen(["open", "-R", str(target)])  # macOS
+    console.print(f"[green]Revealed: {target}[/green]")
+
+
+@app.command(name="open")
+def open_cmd() -> None:
+    """Open the most recent resume PDF."""
+    from flash_resume.services.tracking import get_recent_applications
+
+    apps = get_recent_applications(limit=1)
+    if not apps:
+        console.print("[yellow]No applications yet — run 'fs tailor' first.[/yellow]")
+        raise typer.Exit()
+    cfg = load_config()
+    pdf = Path(cfg.output_dir) / apps[0]["pdf_filename"]
+    if not pdf.exists():
+        console.print("[red]PDF no longer exists.[/red]")
+        raise typer.Exit()
+    if os.name == "nt":
+        os.startfile(str(pdf))
+    else:
+        webbrowser.open(pdf.as_uri())
+
+
+@app.command(name="update")
+def update_cmd(
+    app_id: Annotated[int, typer.Argument(help="Application id (see 'fs history')")],
+    status: Annotated[str, typer.Option(..., "--status", "-s", help="applied | interview | offered")],
+) -> None:
+    """Update an application's pipeline status."""
+    from flash_resume.services.tracking import update_application_status
+
+    VALID = {"applied", "interview", "offered"}
+    if status not in VALID:
+        console.print(f"[red]Status must be one of: {', '.join(sorted(VALID))}[/red]")
+        raise typer.Exit(code=1)
+    if update_application_status(app_id, status):
+        console.print(f"[green]✓ App {app_id} → {status}[/green]")
+    else:
+        console.print(f"[red]No application with id {app_id}.[/red]")
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

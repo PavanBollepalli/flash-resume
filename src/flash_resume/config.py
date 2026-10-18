@@ -21,8 +21,8 @@ class AppConfig(BaseModel):
         description="Absolute path to the user's master_resume.json",
     )
     output_dir: str = Field(
-        default_factory=lambda: str(Path.home() / "Resumes"),
-        description="Default folder where compiled PDFs and diffs are saved",
+        default_factory=lambda: str(Path.home() / "Desktop" / "FlashResume"),
+        description="Every tailored PDF + diff.md lands here, timestamp-prefixed so the latest sorts to the top",
     )
     default_model: str = Field(
         default="gemini-3.5-flash-lite",

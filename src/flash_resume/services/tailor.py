@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 import logging
 import re
 import time
@@ -884,6 +885,7 @@ class TailorEngine:
         role_override: Optional[str] = None,
         output_dir_override: Optional[str] = None,
         interview_mode: bool = False,
+        source: str = "cli",
     ) -> TailorResult:
         """Run the end-to-end tailoring and compilation pipeline."""
         started_at = time.perf_counter()
@@ -942,7 +944,7 @@ class TailorEngine:
         out_base = Path(output_dir_override or self.config.output_dir)
         out_base.mkdir(parents=True, exist_ok=True)
 
-        prefix = f"{sanitize_filename(plan.company)}_{sanitize_filename(plan.role)}"
+        prefix = datetime.now().strftime("%Y-%m-%d-%H%M") + "_" + f"{sanitize_filename(plan.company)}_{sanitize_filename(plan.role)}"
         pdf_path = out_base / f"{prefix}.pdf"
         diff_path = out_base / f"{prefix}.diff.md"
 
@@ -999,6 +1001,23 @@ class TailorEngine:
             total_time_ms,
             pages,
         )
+
+        # 7. Track the application in SQLite history (metadata only; the PDF/diff
+        # bytes stay on disk). Never let a history write fail a finished tailor.
+        try:
+            from flash_resume.services.tracking import log_application
+
+            log_application(
+                company=plan.company,
+                role=plan.role,
+                jd_snippet=job_description[:500],
+                pdf_filename=pdf_path.name,
+                ats_score=plan.ats_match_score,
+                mode="interview_prep" if interview_mode else "truthful",
+                source=source,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Could not log application history: %s", exc)
 
         return TailorResult(
             pdf_path=str(pdf_path.resolve()),
