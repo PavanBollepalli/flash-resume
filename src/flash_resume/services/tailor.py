@@ -32,6 +32,7 @@ from flash_resume.services.evidence import (
     coverage_terms,
     contains_term,
     evaluate_requirements,
+    soft_skill_labels,
 )
 from flash_resume.services.llm import LLMService
 from flash_resume.services.parser import _clean_text
@@ -257,6 +258,30 @@ def apply_tailor_plan(resume: MasterResume, plan: TailorPlan) -> MasterResume:
     # 4. Update Summary if provided
     if plan.summary_edit:
         tailored.summary = plan.summary_edit
+
+    # 5. Add the JD's generic professional skills as their own labelled category.
+    # These are deliberately not evidence-gated: "strong communication" or "time
+    # management" are baseline expectations in a posting, not claims the resume
+    # has to prove, so they are always carried into the generated resume.
+    if plan.soft_skills:
+        category = next(
+            (
+                item
+                for item in tailored.skills
+                if item.category.strip().casefold() == "core competencies"
+            ),
+            None,
+        )
+        if category is None:
+            from flash_resume.models.resume import SkillCategory
+
+            category = SkillCategory(category="Core Competencies", items=[])
+            tailored.skills.append(category)
+        existing = {item.casefold() for item in category.items}
+        for skill in plan.soft_skills:
+            if skill.strip() and skill.strip().casefold() not in existing:
+                category.items.append(skill.strip())
+                existing.add(skill.strip().casefold())
 
     return tailored
 
@@ -668,6 +693,12 @@ def generate_diff_markdown(
             + ", ".join(plan.preparation_skills)
         )
 
+    if plan.soft_skills:
+        lines.append(
+            "- **Core Competencies (added from the JD, not evidence-gated):** "
+            + ", ".join(plan.soft_skills)
+        )
+
     for skill_up in plan.skill_updates:
         if skill_up.added_keywords:
             lines.append(
@@ -935,6 +966,11 @@ class TailorEngine:
             interview_mode=interview_mode,
         )
         llm_time_ms = (time.perf_counter() - llm_started_at) * 1000
+
+        # The JD's generic professional skills are derived deterministically from
+        # the extracted keywords rather than requested from the model, so a
+        # planning call can never drop them.
+        plan.soft_skills = soft_skill_labels(jd_keywords)
 
         # 3. Apply Plan to Clone
         tailored_resume = apply_tailor_plan(master_resume, plan)

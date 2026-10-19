@@ -127,6 +127,13 @@ class TailorPlan(BaseModel):
         default_factory=list,
         description="JD skills the candidate plans to learn; never treated as current experience",
     )
+    soft_skills: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Generic professional skills named by the JD, carried into the resume's "
+            "skills section unconditionally (never evidence-gated)"
+        ),
+    )
     requirement_matches: List[RequirementMatch] = Field(
         default_factory=list,
         description="Auditable requirement-to-resume evidence matrix used for ATS coverage",

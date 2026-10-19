@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import pytest
 
-from flash_resume.models.resume import MasterResume
+from flash_resume.models.resume import MasterResume, SkillCategory
 from flash_resume.models.tailoring import (
     BulletEdit,
     BulletOrder,
@@ -777,3 +777,145 @@ def test_highlight_keywords_merges_with_ingest_bold_markers():
     assert len(segments) % 2 == 1  # ends with plain text, i.e. balanced pairs
     for i in range(len(segments)):
         assert "**" not in segments[i]  # no double-wrapped segments
+
+
+def _example_resume() -> MasterResume:
+    example_path = Path(__file__).resolve().parent.parent / "examples" / "master_resume.json"
+    return MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
+
+
+def test_generic_professional_requirements_match_as_soft_skills():
+    """Soft skills are matched as their own labelled class, not reported missing."""
+    resume = _example_resume()
+    requirements = [
+        "Strong problem-solving and analytical skills",
+        "Excellent communication and interpersonal skills",
+        "Time management skills",
+        "Collaborative, solution-focused mindset",
+        "High-tech interest and passion for learning",
+    ]
+
+    matches = evaluate_requirements(resume, JDKeywords(required_keywords=requirements))
+
+    assert [match.status for match in matches] == ["covered"] * len(requirements)
+    # A compound phrasing resolves each half through the soft-skill table, so the
+    # parent reports `compound_requirement`; a bare one reports `soft_skill`.
+    # Either way it is never reported as missing.
+    assert all(match.match_method != "none" for match in matches)
+    bare = evaluate_requirements(resume, JDKeywords(required_keywords=["Time management skills"]))
+    assert bare[0].match_method == "soft_skill"
+
+
+def test_soft_skills_are_scored_so_non_technical_postings_are_not_deflated():
+    """A soft-skill-only posting should not read as a near-total miss."""
+    resume = _example_resume()
+    keywords = JDKeywords(
+        required_keywords=[
+            "Strong problem-solving and analytical skills",
+            "Time management skills",
+            "Excellent communication skills",
+        ]
+    )
+
+    assert coverage_score(evaluate_requirements(resume, keywords)) == 100
+
+
+def test_technical_requirement_containing_a_soft_marker_stays_gated():
+    """The soft-skill fallback must never absorb a recognised technical requirement.
+
+    "Attention to detail in testing" contains the soft marker "attention to
+    detail", but the technical rule table resolves it to "testing". It carries
+    no testing evidence, so it must stay unsupported rather than silently
+    scoring as a covered soft skill.
+    """
+    resume = _example_resume()
+    matches = evaluate_requirements(
+        resume, JDKeywords(required_keywords=["Attention to detail in testing"])
+    )
+
+    assert matches[0].status == "unsupported"
+    assert matches[0].match_method == "none"
+
+
+def test_unevidenced_technical_requirements_are_still_unsupported():
+    """Real gaps keep reporting as gaps."""
+    resume = _example_resume()
+    matches = evaluate_requirements(
+        resume, JDKeywords(required_keywords=["Kubernetes", "Machine learning"])
+    )
+
+    assert [match.status for match in matches] == ["unsupported", "unsupported"]
+    assert all(match.match_method == "none" for match in matches)
+
+
+def test_programming_requirement_is_covered_by_evidenced_languages():
+    """The programming rule is evidence-gated, and the resume supplies the evidence."""
+    resume = _example_resume()
+    matches = evaluate_requirements(
+        resume,
+        JDKeywords(required_keywords=["Basic programming or scripting knowledge"]),
+    )
+
+    assert matches[0].status == "covered"
+    assert matches[0].match_method != "soft_skill"
+
+
+def test_soft_skill_labels_come_from_what_the_jd_asks_for():
+    """Every generic concept the JD names becomes one clean resume label."""
+    from flash_resume.services.evidence import soft_skill_labels
+
+    labels = soft_skill_labels(
+        JDKeywords(
+            required_keywords=[
+                "Strong problem-solving and analytical skills",
+                "Excellent communication and interpersonal skills",
+                "Time management skills",
+                "Python, Java, C++",
+                "Kubernetes",
+            ]
+        )
+    )
+
+    assert labels == ["Problem Solving & Analysis", "Communication", "Time Management"]
+
+
+def test_soft_skill_labels_skip_technical_requirements():
+    """A technical requirement is never turned into a soft-skill label."""
+    from flash_resume.services.evidence import soft_skill_labels
+
+    assert soft_skill_labels(
+        JDKeywords(required_keywords=["Attention to detail in testing", "Kubernetes"])
+    ) == []
+
+
+def test_apply_tailor_plan_adds_core_competencies_category():
+    """Soft skills land in the generated resume's skills section."""
+    resume = _example_resume()
+    plan = TailorPlan(soft_skills=["Communication", "Time Management"])
+
+    tailored = apply_tailor_plan(resume, plan)
+
+    professional = next(
+        category for category in tailored.skills if category.category == "Core Competencies"
+    )
+    assert professional.items == ["Communication", "Time Management"]
+    # Appended, so the technical categories keep their position and order.
+    assert tailored.skills[-1].category == "Core Competencies"
+    # The source resume is untouched.
+    assert all(category.category != "Core Competencies" for category in resume.skills)
+
+
+def test_apply_tailor_plan_merges_into_an_existing_core_competencies_category():
+    """Repeated tailoring must not stack duplicate categories or duplicate items."""
+    resume = _example_resume()
+    resume.skills.append(
+        SkillCategory(category="Core Competencies", items=["Communication"])
+    )
+
+    tailored = apply_tailor_plan(resume, TailorPlan(soft_skills=["Communication", "Ownership & Initiative"]))
+
+    professional = [
+        category for category in tailored.skills if category.category == "Core Competencies"
+    ]
+    assert len(professional) == 1
+    assert professional[0].items == ["Communication", "Ownership & Initiative"]

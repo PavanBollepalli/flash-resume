@@ -20,21 +20,9 @@
       .slice(0, 60) || "resume";
   }
 
-  // Always save to Downloads instantly — the guaranteed win. Fires in ~0ms,
-  // never blocks the attach attempt.
-  function triggerDownload(base64, filename) {
-    const dataUrl = `data:application/pdf;base64,${base64}`;
-    try {
-      chrome.runtime.sendMessage({ type: "FR_DOWNLOAD", dataUrl, filename }, () => {
-        if (chrome.runtime.lastError) {
-          // Downloads API unavailable (e.g. file:// preview) — PDF still on disk
-          // via the server's output dir (Desktop/FlashResume).
-        }
-      });
-    } catch (_) {
-      // No extension context — still saved to disk by the server.
-    }
-  }
+  // NOTE: no chrome.downloads call anywhere. The server writes the PDF straight
+  // into the user's Downloads folder as "<FirstName>_<Company>.pdf" — a browser
+  // download would re-trigger Chrome's Save-As dialog, which we explicitly avoid.
 
   // Single opportunistic attach — one shot, ~500ms, no polling loop.
   // If a file input exists (Workday / Greenhouse / Lever apply page) it wins;
@@ -210,23 +198,23 @@
       }
       const score = data.ats_match_score ?? "?";
       const pages = data.page_count ?? 1;
-      const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
-      const filename = `${stamp}_${sanitizeName(data.company)}_${sanitizeName(data.role)}.pdf`;
+      const filename = data.downloads_filename
+        ? data.downloads_filename
+        : `${new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-")}_${sanitizeName(data.company)}_${sanitizeName(data.role)}.pdf`;
 
       if (!data.pdf_base64) {
         showToast(`✅ ATS ${score}% · ${pages}p · PDF ready (${data.pdf_path || "Desktop/FlashResume"})`);
         return;
       }
 
-      // Downloads is the guaranteed win — fire immediately so the user never waits.
+      // The server already wrote a clean copy to Downloads — no browser prompt.
       // Attach runs in parallel as a single opportunistic shot; no 9s polling loop.
-      triggerDownload(data.pdf_base64, filename);
-      showToast("📥 PDF saved to Downloads — trying to attach…");
+      showToast("⬇️ Saved to Downloads · auto-uploading resume…");
       const attached = await tryAttachOnce(data.pdf_base64, filename);
       showToast(
         attached
-          ? `✅ ATS ${score}% · ${pages}p · PDF attached + saved to Downloads ✓`
-          : `✅ ATS ${score}% · ${pages}p · PDF saved to Downloads — attach it`,
+          ? `✅ ATS ${score}% · ${pages}p · resume auto-uploaded ✓`
+          : `✅ ATS ${score}% · ${pages}p · saved to Downloads (no upload field found)`,
       );
     } catch (err) {
       showToast(`❌ Can't reach the local engine. Run 'fs serve' or restart via 'fs autostart enable'.`, true);

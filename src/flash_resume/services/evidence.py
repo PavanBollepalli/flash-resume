@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Optional
 
 from flash_resume.models.resume import MasterResume
 from flash_resume.models.tailoring import JDKeywords, RequirementMatch
@@ -101,6 +101,15 @@ RULES: dict[str, EvidenceRule] = {
     "object oriented programming": EvidenceRule(
         ("object oriented", "object-oriented", "oop", "classes", "inheritance", "polymorphism")
     ),
+    # "Basic programming or scripting knowledge" is a technical requirement like
+    # any other, so it stays behind the evidence gate — but it needs its own rule
+    # or the gate has nothing to look for and the whole class reads as missing.
+    "programming fundamentals": EvidenceRule(
+        (
+            "python", "java", "javascript", "typescript", "c++", "c#", "sql",
+            "programming", "scripting", "coding", "nptel",
+        )
+    ),
     "concurrency": EvidenceRule(
         ("concurrency", "concurrent", "parallel", "parallel process", "asynchronous", "async")
     ),
@@ -115,6 +124,61 @@ RULES: dict[str, EvidenceRule] = {
     "llm": EvidenceRule(("llm", "large language model", "llama")),
     "ai": EvidenceRule(("generative ai", "artificial intelligence", "rag pipeline")),
     "pytorch hugging face": EvidenceRule(("pytorch", "hugging face")),
+}
+
+
+# Generic professional expectations — "strong communication", "team player",
+# "time management". Every posting includes them, they carry no distinguishing
+# signal, and no resume can credibly disprove them, so they are matched as their
+# own labelled class (``match_method="soft_skill"``) instead of being pushed
+# through the evidence gate, which has no rules for them and would otherwise
+# report the entire class as missing on any non-technical posting.
+#
+# Technical requirements are untouched: this table is consulted only after every
+# technical rule above has failed to recognise the requirement, so "machine
+# learning" can never be absorbed by the "learning" marker below.
+SOFT_SKILL_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("problem solving", (
+        "problem solving", "analytical", "critical thinking", "troubleshoot",
+        "logical reasoning", "decision making",
+    )),
+    ("communication", (
+        "communication", "interpersonal", "verbal", "written", "presentation",
+        "stakeholder", "articulat", "language skill",
+    )),
+    ("collaboration", (
+        "collaborat", "teamwork", "team player", "team member", "team environment",
+        "cross functional", "work in a team", "work with a team",
+    )),
+    ("time management", (
+        "time management", "multitask", "multi task", "prioriti", "deadline",
+        "organisational", "organizational", "work under pressure", "fast paced",
+    )),
+    ("learning aptitude", (
+        "passion for learning", "willingness to learn", "eagerness to learn",
+        "quick learner", "continuous learning", "learn new", "curious",
+        "growth mindset", "self motivat", "adaptab", "adapt to", "high tech interest",
+        "interest in", "enthusias", "passion",
+    )),
+    ("ownership", (
+        "ownership", "proactive", "self starter", "initiative", "attention to detail",
+        "detail orient", "work ethic", "responsib", "accountab",
+    )),
+    ("leadership", ("leadership", "mentor", "lead a team", "guide junior")),
+)
+
+# Clean, ATS-readable labels for the generic concepts above. The generated resume
+# shows these rather than the JD's raw sentence ("Strong problem-solving and
+# analytical skills"), which is far too long to sit in a skills line — but each
+# label keeps the nouns an ATS actually scans for.
+SOFT_SKILL_LABELS: dict[str, str] = {
+    "problem solving": "Problem Solving & Analysis",
+    "communication": "Communication",
+    "collaboration": "Collaboration & Teamwork",
+    "time management": "Time Management",
+    "learning aptitude": "Continuous Learning",
+    "ownership": "Ownership & Initiative",
+    "leadership": "Leadership & Mentoring",
 }
 
 
@@ -275,6 +339,8 @@ def _canonical_rule(requirement: str) -> str | None:
         return "design principles"
     if "object oriented" in value:
         return "object oriented programming"
+    if "programming" in value or "scripting" in value or "coding" in value:
+        return "programming fundamentals"
     if "concurr" in value or "parallel" in value or "asynchronous" in value:
         return "concurrency"
     if "ai" in value and "workflow" in value:
@@ -357,6 +423,45 @@ def _find_matches(aliases: Iterable[str], evidence: list[EvidenceItem]) -> list[
         ):
             found.append(item)
     return found
+
+
+def _soft_skill_concept(requirement: str) -> str | None:
+    """Return the generic professional concept a requirement belongs to, if any.
+
+    ``None`` means the requirement is not a recognised generic expectation and
+    must still be decided by the evidence gate.
+    """
+    value = _singular(normalize(requirement))
+    for concept, markers in SOFT_SKILL_PATTERNS:
+        if any(marker in value for marker in markers):
+            return concept
+    return None
+
+
+def soft_skill_labels(jd_keywords: Optional[JDKeywords]) -> list[str]:
+    """Return the professional-skills labels a JD asks for, in first-seen order.
+
+    These are carried into the generated resume unconditionally. A posting's
+    "strong communication" or "time management" is a baseline expectation, not a
+    claim the resume is expected to prove, so unlike technical requirements they
+    are never filtered by the evidence gate.
+
+    Requirements the technical rule table already recognises are skipped, so a
+    technical requirement that happens to contain a soft marker (for example
+    "attention to detail in testing") cannot leak a soft-skill label into the
+    resume.
+    """
+    if not jd_keywords:
+        return []
+    labels: list[str] = []
+    for term in [*jd_keywords.required_keywords, *jd_keywords.preferred_keywords]:
+        if _canonical_rule(term) is not None:
+            continue
+        concept = _soft_skill_concept(term)
+        label = SOFT_SKILL_LABELS.get(concept or "")
+        if label and label not in labels:
+            labels.append(label)
+    return labels
 
 
 def _evaluate_one(requirement: str, priority: str, evidence: list[EvidenceItem]) -> RequirementMatch:
@@ -469,6 +574,30 @@ def _evaluate_one(requirement: str, priority: str, evidence: list[EvidenceItem])
             reason=("Related, verifiable resume evidence supports part of this compound requirement."
                     if status == "partial" else "A verified equivalent is present in the resume."),
         )
+
+    # Nothing technical recognised this requirement (``rule_name is None``), so
+    # it is safe to ask whether it is one of the generic professional
+    # expectations. A requirement the rule table *does* understand never
+    # reaches here — it stays behind the evidence gate even when unsupported,
+    # which is what keeps "machine learning" from matching soft skills.
+    if rule_name is None:
+        concept = _soft_skill_concept(requirement)
+        if concept:
+            return RequirementMatch(
+                requirement=requirement,
+                normalized_requirement=concept,
+                priority=priority,
+                status="covered",
+                confidence=0.5,
+                evidence=[],
+                evidence_locations=[],
+                match_method="soft_skill",
+                reason=(
+                    "Generic professional expectation, matched as its own class. "
+                    "It is not evidence-gated because no resume can credibly "
+                    "disprove it."
+                ),
+            )
 
     return RequirementMatch(
         requirement=requirement, normalized_requirement=rule_name or normalized, priority=priority,

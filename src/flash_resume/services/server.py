@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from flash_resume import __version__
 from flash_resume.config import load_config, save_config
 from flash_resume.models.resume import MasterResume
 from flash_resume.services.tailor import TailorEngine
@@ -26,7 +27,7 @@ logging.basicConfig(
 app = FastAPI(
     title="Flash Resume Local Companion",
     description="Local background API powering 1-click browser extension tailoring.",
-    version="0.2.8",
+    version=__version__,
 )
 
 # Enable CORS for browser extensions and local web callers
@@ -105,10 +106,58 @@ class TailorResponse(BaseModel):
     preparation_skills: list[str]
     page_count: int
     pdf_path: str
+    downloads_path: str
+    downloads_filename: str
     pdf_base64: str
     llm_time_ms: float
     compile_time_ms: float
     total_time_ms: float
+
+
+def _downloads_dir() -> Path:
+    """Resolve the user's real Downloads folder, surviving OneDrive relocation.
+
+    The browser no longer drives the download (that surfaced a Save-As dialog);
+    the server writes the tailored PDF here directly, so we want the path the OS
+    actually treats as "Downloads" rather than a guess.
+    """
+    try:
+        import ctypes
+
+        class GUID(ctypes.Structure):
+            _fields_ = [
+                ("Data1", ctypes.c_ulong),
+                ("Data2", ctypes.c_ushort),
+                ("Data3", ctypes.c_ushort),
+                ("Data4", ctypes.c_ubyte * 8),
+            ]
+
+        # FOLDERID_Downloads = {374DE290-123F-4565-9164-39C4925E467B}
+        guid = GUID()
+        guid.Data1 = 0x374DE290
+        guid.Data2 = 0x123F
+        guid.Data3 = 0x4565
+        guid.Data4 = (0x91, 0x64, 0x39, 0xC4, 0x92, 0x5E, 0x46, 0x7B)
+        pidl = ctypes.c_void_p()
+        res = ctypes.windll.shell32.SHGetKnownFolderPath(
+            ctypes.byref(guid), 0, None, ctypes.byref(pidl)
+        )
+        if res == 0:
+            try:
+                path = Path(ctypes.wstring_at(pidl))
+                ctypes.windll.ole32.CoTaskMemFree(pidl)
+                return path
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return Path.home() / "Downloads"
+
+
+def _sanitize_filename_part(value: str) -> str:
+    """Make a string safe to embed in a filename: strip illegal chars, collapse spaces."""
+    cleaned = "".join(ch for ch in value if ch not in '\\/:*?"<>|' and ord(ch) >= 32)
+    return " ".join(cleaned.split()).strip()
 
 
 @app.get("/api/status")
@@ -200,6 +249,34 @@ def tailor_resume(req: TailorRequest):
         pdf_bytes = Path(result.pdf_path).read_bytes()
         pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
 
+        # The browser no longer calls chrome.downloads — that surfaced a Save-As
+        # dialog. Instead the server writes a clean, human-named copy of the PDF
+        # straight into the user's Downloads folder, the same way it already writes
+        # the diff.md artifacts. Name it "<FirstName>_<Company>.pdf".
+        first_name = "Resume"
+        try:
+            mr = MasterResume.model_validate_json(
+                Path(cfg.master_resume_path).read_text(encoding="utf-8")
+            )
+            full = (mr.contact.name or "").strip()
+            if full:
+                first_name = full.split()[0]
+        except Exception:
+            pass
+        company_slug = _sanitize_filename_part(result.plan.company) or "Resume"
+        downloads_dir = _downloads_dir()
+        try:
+            downloads_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        downloads_filename = f"{first_name}_{company_slug}.pdf"
+        downloads_path = downloads_dir / downloads_filename
+        try:
+            downloads_path.write_bytes(pdf_bytes)
+        except Exception:
+            # The Downloads copy is a convenience; never fail tailoring over it.
+            pass
+
         return TailorResponse(
             success=True,
             company=result.plan.company,
@@ -209,6 +286,8 @@ def tailor_resume(req: TailorRequest):
             preparation_skills=result.plan.preparation_skills,
             page_count=result.page_count,
             pdf_path=result.pdf_path,
+            downloads_path=str(downloads_path),
+            downloads_filename=downloads_filename,
             pdf_base64=pdf_b64,
             llm_time_ms=result.llm_time_ms,
             compile_time_ms=result.compile_time_ms,
