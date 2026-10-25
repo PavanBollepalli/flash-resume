@@ -1,8 +1,9 @@
 """SQLite application-history tracker for Flash Resume.
 
-Stores metadata only (company, role, date, status, ats_score, filename pointer);
-the PDF and diff.md bytes stay on disk in the output_dir. WAL mode lets the CLI
-and the extension write concurrently without lock errors.
+Stores metadata only (company, role, date, status, ats_score, filename pointer,
+and the pipeline timings); the PDF and diff.md bytes stay on disk in the
+output_dir. WAL mode lets the CLI and the extension write concurrently without
+lock errors.
 """
 
 from __future__ import annotations
@@ -26,12 +27,30 @@ CREATE TABLE IF NOT EXISTS applications (
     ats_score INTEGER,
     mode TEXT DEFAULT 'truthful',
     source TEXT DEFAULT 'cli',
-    status TEXT DEFAULT 'applied'
+    status TEXT DEFAULT 'applied',
+    llm_time_ms REAL,
+    compile_time_ms REAL,
+    total_time_ms REAL
 );
+"""
+
+# Created only after the back-fill below, so an index on a column that an older
+# database is missing can't be issued before the column exists.
+_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_created_at ON applications(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_company ON applications(company);
 CREATE INDEX IF NOT EXISTS idx_status ON applications(status);
 """
+
+# Columns added after the table's first release, paired with the DDL used to
+# back-fill them. A history.db written by an older build lacks them, and
+# CREATE TABLE IF NOT EXISTS will not retro-fit an existing table.
+_ADDED_COLUMNS = (
+    ("status", "TEXT DEFAULT 'applied'"),
+    ("llm_time_ms", "REAL"),
+    ("compile_time_ms", "REAL"),
+    ("total_time_ms", "REAL"),
+)
 
 
 def get_db_path() -> Path:
@@ -48,13 +67,14 @@ def _connect(db_path: Optional[Path] = None) -> sqlite3.Connection:
 
 
 def init_db(db_path: Optional[Path] = None) -> None:
-    """Create the schema (idempotent) and back-fill the status column if missing."""
+    """Create the schema (idempotent) and back-fill columns added by later builds."""
     with _connect(db_path) as conn:
-        conn.executescript(_SCHEMA)
-        # Back-fill `status` for databases created before the column existed.
+        conn.execute(_SCHEMA)
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(applications)")}
-        if columns and "status" not in columns:
-            conn.execute("ALTER TABLE applications ADD COLUMN status TEXT DEFAULT 'applied'")
+        for name, ddl in _ADDED_COLUMNS:
+            if columns and name not in columns:
+                conn.execute(f"ALTER TABLE applications ADD COLUMN {name} {ddl}")
+        conn.executescript(_INDEXES)
 
 
 def log_application(
@@ -66,6 +86,9 @@ def log_application(
     mode: str = "truthful",
     source: str = "cli",
     status: str = "applied",
+    llm_time_ms: Optional[float] = None,
+    compile_time_ms: Optional[float] = None,
+    total_time_ms: Optional[float] = None,
     db_path: Optional[Path] = None,
 ) -> int:
     """Insert one application row and return its id."""
@@ -73,10 +96,16 @@ def log_application(
     with _connect(db_path) as conn:
         cur = conn.execute(
             """
-            INSERT INTO applications (company, role, jd_snippet, pdf_filename, ats_score, mode, source, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO applications (
+                company, role, jd_snippet, pdf_filename, ats_score, mode, source,
+                status, llm_time_ms, compile_time_ms, total_time_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (company, role, jd_snippet, pdf_filename, ats_score, mode, source, status),
+            (
+                company, role, jd_snippet, pdf_filename, ats_score, mode, source,
+                status, llm_time_ms, compile_time_ms, total_time_ms,
+            ),
         )
         return int(cur.lastrowid)
 
@@ -108,7 +137,8 @@ def get_recent_applications(
         rows = conn.execute(
             f"""
             SELECT id, created_at, company, role, jd_snippet, pdf_filename,
-                   ats_score, mode, source, status
+                   ats_score, mode, source, status,
+                   llm_time_ms, compile_time_ms, total_time_ms
             FROM applications
             {where}
             ORDER BY created_at DESC, id DESC
@@ -150,7 +180,8 @@ def get_application_by_id(app_id: int, db_path: Optional[Path] = None) -> Option
     with _connect(db_path) as conn:
         row = conn.execute(
             "SELECT id, created_at, company, role, jd_snippet, pdf_filename, "
-            "ats_score, mode, source, status FROM applications WHERE id = ?",
+            "ats_score, mode, source, status, "
+            "llm_time_ms, compile_time_ms, total_time_ms FROM applications WHERE id = ?",
             (app_id,),
         ).fetchone()
     return dict(row) if row else None
@@ -178,6 +209,10 @@ def get_stats(
     Totals span the *full* history (not just the current page), so the header
     stays meaningful as applications grow. `avg_ats` is over rows that have a
     score; those without are skipped so NULLs don't drag the average down.
+    The runtime averages follow the same rule — rows logged before timings were
+    recorded (or by a build that didn't measure them) are skipped rather than
+    counted as a zero-second run. They are averaged independently, so each is
+    over whichever rows actually carry that measurement.
     """
     init_db(db_path)
     clauses, params = [], []
@@ -198,17 +233,31 @@ def get_stats(
                 params,
             )
         }
-        # Average over scored rows only; NULLs are skipped so they don't drag it down.
-        avg_clauses = clauses + ["ats_score IS NOT NULL"]
-        avg_where = "WHERE " + " AND ".join(avg_clauses)
-        avg_row = conn.execute(
-            f"SELECT AVG(ats_score) FROM applications {avg_where}", params
-        ).fetchone()
+
+        def average(column: str) -> Optional[float]:
+            """Average one nullable column over the rows that have it set."""
+            avg_where = "WHERE " + " AND ".join(clauses + [f"{column} IS NOT NULL"])
+            row = conn.execute(
+                f"SELECT AVG({column}) FROM applications {avg_where}", params
+            ).fetchone()
+            return row[0] if row else None
+
+        def rounded(column: str) -> Optional[int]:
+            value = average(column)
+            return round(value) if value is not None else None
+
+        avg_ats = rounded("ats_score")
+        avg_total_ms = rounded("total_time_ms")
+        avg_llm_ms = rounded("llm_time_ms")
+        avg_compile_ms = rounded("compile_time_ms")
 
     return {
         "total": total,
         "applied": by_status.get("applied", 0),
         "interview": by_status.get("interview", 0),
         "offered": by_status.get("offered", 0),
-        "avg_ats": round(avg_row[0]) if avg_row and avg_row[0] is not None else None,
+        "avg_ats": avg_ats,
+        "avg_total_ms": avg_total_ms,
+        "avg_llm_ms": avg_llm_ms,
+        "avg_compile_ms": avg_compile_ms,
     }

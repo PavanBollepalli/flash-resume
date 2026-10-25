@@ -35,6 +35,17 @@ function scoreInfo(v) {
   return { cls: n >= 85 ? "hi" : n >= 70 ? "mid" : "lo", text: `${n}%` };
 }
 
+// Engine timings arrive in milliseconds; rows logged before timings were
+// recorded carry null and simply show no runtime rather than a fake 0s. Same
+// formatting rule as the full-page workbench, so the two surfaces agree.
+function fmtMs(ms) {
+  if (ms == null || ms === "") return null;
+  const n = Number(ms);
+  if (Number.isNaN(n) || n <= 0) return null;
+  if (n < 1000) return `${Math.round(n)}ms`;
+  return `${(n / 1000).toFixed(n < 10000 ? 2 : 1)}s`;
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
@@ -118,7 +129,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     identityName.textContent = data.candidate_name || "Engine ready";
     offlineNotice.style.display = "none";
 
-    const hasActiveKey = data.provider === "groq" ? data.has_groq_key : data.has_api_key;
+    // The server answers "does the active provider have every key it needs?" —
+    // hybrid needs two, so the popup doesn't re-derive this from the provider
+    // name. Older servers don't send the field; fall back per provider.
+    const hasActiveKey =
+      data.has_required_keys ??
+      (data.provider === "groq" ? data.has_groq_key : data.has_api_key);
     if (!hasActiveKey) setupCard.style.display = "block";
     if (!data.master_resume_configured) identityName.textContent = "No master resume yet";
   } catch (err) {
@@ -157,11 +173,16 @@ function displayHistory(apps) {
   list.innerHTML = apps
     .map((app) => {
       const { cls, text } = scoreInfo(app.ats_score);
+      const runtime = fmtMs(app.total_time_ms);
+      const runtimeLine = runtime
+        ? `<div class="app-runtime" title="Engine time to produce this resume">${runtime}</div>`
+        : "";
       return `
       <div class="app-row">
         <div class="app-main">
           <div class="app-company">${escapeHtml(app.company)}</div>
           <div class="app-meta">${escapeHtml(app.role)} · <span class="mono">${escapeHtml(app.date)}</span></div>
+          ${runtimeLine}
         </div>
         <span class="app-score ${cls}" title="ATS signal ${text === "–" ? "not scored" : text}">${text}</span>
         <a class="app-pdf" href="${API_BASE}/api/resume/${app.id}" target="_blank" title="Open PDF">${PDF_ICON}PDF</a>

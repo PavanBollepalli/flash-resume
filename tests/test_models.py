@@ -47,8 +47,7 @@ def test_tailor_plan_model():
                 bullet_index=0,
                 original_text="Built APIs with Python and databases.",
                 replacement_text="Engineered high-throughput REST APIs using FastAPI and PostgreSQL.",
-                keywords_added=["FastAPI", "PostgreSQL"],
-                word_count_delta=2,
+                preserved_facts=["2"],
             )
         ],
     )
@@ -56,5 +55,5 @@ def test_tailor_plan_model():
     assert plan.company == "Stripe"
     assert plan.ats_match_score == 92
     assert len(plan.bullet_edits) == 1
-    assert plan.bullet_edits[0].word_count_delta == 2
+    assert plan.bullet_edits[0].preserved_facts == ["2"]
 

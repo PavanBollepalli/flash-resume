@@ -5,14 +5,20 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Optional
+import threading
+from typing import Optional, Sequence
 
 from google import genai
 from google.genai import types
 
 from flash_resume.models.job import JobAnalysis
 from flash_resume.models.resume import MasterResume
-from flash_resume.models.tailoring import CoreTailorPlan, JDKeywords, ProjectTailorPlan, TailorPlan
+from flash_resume.models.tailoring import CoreEditPlan, JDKeywords, ProjectEditPlan, TailorPlan
+from flash_resume.services.edit_contract import (
+    EDIT_CONTRACT_RULES,
+    BulletTarget,
+    render_manifest,
+)
 
 
 logger = logging.getLogger("flash_resume.llm")
@@ -41,8 +47,7 @@ STRICT PRINCIPLES & CONSTRAINTS:
    - NEVER fabricate employers, roles, degrees, certifications, or unmentioned technologies.
    - Only integrate skills, tools, and domain keywords that align with the candidate's existing background.
 2. WORD & CHARACTER BUDGET (CRITICAL TO PREVENT PAGE OVERFLOW):
-   - For every modified bullet point, the replacement MUST be within ±2 words of the original bullet.
-   - CHARACTER BUDGET: The replacement MUST NOT exceed the total character length of the original bullet by more than 15 characters (watch out for long words that cause extra line wraps).
+   - Every TARGETS entry states its own word and character budget. Stay inside it.
    - Do NOT lengthen bullets. Do NOT add extra sentences or clauses that wrap onto new lines.
 3. SURGICAL MODIFICATION ONLY:
     - Treat the target role as the primary editing lens, not just a title label.
@@ -68,13 +73,13 @@ STRICT PRINCIPLES & CONSTRAINTS:
      and skills that provide evidence for the highest-priority supported
      keywords. Do not spend an edit on a generic wording change when a
      supported JD keyword still needs stronger placement.
-   - Return content_priorities for every experience/project item. Rank the
-     strongest role-relevant items high without inventing evidence.
+   - TARGETS is the complete list of bullets you may rewrite, with the facts each
+     must keep and the terms each may absorb. Follow the bullet edit contract
+     below for every one of them.
    - Return evidence_assignments for important covered requirements, pointing
      to the strongest concrete summary, skill, experience bullet, or project.
-   - Return bullet_orders only as complete permutations of existing bullets.
-     Put role-relevant and required-keyword evidence first; never drop or
-     duplicate a bullet.
+   - Bullet ordering and per-item relevance ranking are computed by Flash Resume
+     from the accepted edits. Do not return them; they are not part of the schema.
 4. SUMMARY TAILORING (ALWAYS produce summary_edit):
    - Rewrite the candidate's professional summary to mirror the JD's language.
    - Weave in the top 4-5 matched JD keywords naturally (do NOT
@@ -147,10 +152,13 @@ def _split_prompt(
     unsupported_terms: Optional[list[str]],
     jd_keywords: Optional[JDKeywords],
     output_instruction: str,
+    targets: Optional[Sequence[BulletTarget]] = None,
 ) -> str:
     """Build a compact prompt shared by the two specialist calls."""
     required = ", ".join(jd_keywords.required_keywords) if jd_keywords else ""
     preferred = ", ".join(jd_keywords.preferred_keywords) if jd_keywords else ""
+    manifest = render_manifest(list(targets)) if targets is not None else ""
+    contract = f"\n{EDIT_CONTRACT_RULES}\n{manifest}\n" if targets is not None else ""
     return f"""Tailor only the {scope} of this resume for the target role.
 Use existing evidence only. Required supported terms have highest priority,
 then preferred supported terms, then supported responsibilities. Never invent
@@ -169,7 +177,7 @@ REQUIRED JD TERMS: {required}
 PREFERRED JD TERMS: {preferred}
 SUPPORTED TERMS: {", ".join(supported_terms or [])}
 UNSUPPORTED TERMS: {", ".join(unsupported_terms or [])}
-
+{contract}
 {output_instruction}
 """
 
@@ -295,26 +303,41 @@ class LLMService:
         self.api_key = api_key
         self.model = model
         self._client: Optional[genai.Client] = None
+        self._client_lock = threading.Lock()
 
     @property
     def client(self) -> genai.Client:
-        """Lazily initialize the Gemini client."""
+        """Lazily initialize the Gemini client, once, even under concurrency.
+
+        The two specialist calls run on a thread pool and can reach this property
+        at the same time. Without the lock both threads see ``None`` and build
+        their own client; the loser's client is then dropped from ``_client``
+        while that thread is still sending through it, and it fails with
+        "Cannot send a request, as the client has been closed." The run silently
+        falls back to the legacy single-plan call — paying for three calls where
+        two were needed. Hybrid mode is where this bites, because extraction
+        goes to Groq, so the concurrent specialist pair is the *first* touch of
+        this client; on the Gemini provider extraction warms it first.
+        """
         if self._client is None:
-            if not self.api_key:
-                raise ValueError(
-                    "GEMINI_API_KEY is not set.\n"
-                    "Set it in your environment: export GEMINI_API_KEY='your-key' (or $env:GEMINI_API_KEY='your-key' in PowerShell)\n"
-                    "or run 'fs init' to configure it."
-                )
-            self._client = genai.Client(api_key=self.api_key)
+            with self._client_lock:
+                if self._client is None:
+                    if not self.api_key:
+                        raise ValueError(
+                            "GEMINI_API_KEY is not set.\n"
+                            "Set it in your environment: export GEMINI_API_KEY='your-key' (or $env:GEMINI_API_KEY='your-key' in PowerShell)\n"
+                            "or run 'fs init' to configure it."
+                        )
+                    self._client = genai.Client(api_key=self.api_key)
         return self._client
 
-    def generate_core_tailor_plan(
+    def generate_core_edit_plan(
         self, resume: MasterResume, job_description: str,
         company_override: Optional[str] = None, role_override: Optional[str] = None,
         supported_terms: Optional[list[str]] = None, unsupported_terms: Optional[list[str]] = None,
         jd_keywords: Optional[JDKeywords] = None, interview_mode: bool = False,
-    ) -> CoreTailorPlan:
+        targets: Optional[Sequence[BulletTarget]] = None,
+    ) -> CoreEditPlan:
         payload = {
             "summary": resume.summary,
             "skills": [item.model_dump(mode="json") for item in resume.skills],
@@ -326,47 +349,50 @@ class LLMService:
                 "summary, skills, and experience", payload, job_description,
                 company_override, role_override, supported_terms, unsupported_terms,
                 jd_keywords,
-                "Return only the CoreTailorPlan JSON fields.",
+                "Return only the CoreEditPlan JSON fields.",
+                targets,
             ),
             config=types.GenerateContentConfig(
                 system_instruction=TAILOR_SYSTEM_INSTRUCTION + (
                     INTERVIEW_MODE_INSTRUCTION if interview_mode else ""
                 ),
                 response_mime_type="application/json",
-                response_schema=CoreTailorPlan,
+                response_schema=CoreEditPlan,
                 max_output_tokens=2048,
                 temperature=0.2,
             ),
         )
-        if isinstance(response.parsed, CoreTailorPlan):
+        if isinstance(response.parsed, CoreEditPlan):
             return response.parsed
-        return CoreTailorPlan.model_validate_json(response.text or "{}")
+        return CoreEditPlan.model_validate_json(response.text or "{}")
 
-    def generate_project_tailor_plan(
+    def generate_project_edit_plan(
         self, resume: MasterResume, job_description: str,
         company_override: Optional[str] = None, role_override: Optional[str] = None,
         supported_terms: Optional[list[str]] = None, unsupported_terms: Optional[list[str]] = None,
         jd_keywords: Optional[JDKeywords] = None,
-    ) -> ProjectTailorPlan:
+        targets: Optional[Sequence[BulletTarget]] = None,
+    ) -> ProjectEditPlan:
         payload = {"projects": [item.model_dump(mode="json") for item in resume.projects]}
         response = self.client.models.generate_content(
             model=self.model,
             contents=_split_prompt(
                 "projects", payload, job_description, company_override, role_override,
                 supported_terms, unsupported_terms, jd_keywords,
-                "Return only the ProjectTailorPlan JSON fields.",
+                "Return only the ProjectEditPlan JSON fields.",
+                targets,
             ),
             config=types.GenerateContentConfig(
                 system_instruction=TAILOR_SYSTEM_INSTRUCTION,
                 response_mime_type="application/json",
-                response_schema=ProjectTailorPlan,
+                response_schema=ProjectEditPlan,
                 max_output_tokens=2048,
                 temperature=0.2,
             ),
         )
-        if isinstance(response.parsed, ProjectTailorPlan):
+        if isinstance(response.parsed, ProjectEditPlan):
             return response.parsed
-        return ProjectTailorPlan.model_validate_json(response.text or "{}")
+        return ProjectEditPlan.model_validate_json(response.text or "{}")
 
     def extract_jd_keywords(self, job_description: str) -> JDKeywords:
         """LLM call #1: extract ATS-relevant keywords from the job description.
@@ -405,6 +431,7 @@ class LLMService:
         unsupported_terms: Optional[list[str]] = None,
         jd_keywords: Optional[JDKeywords] = None,
         interview_mode: bool = False,
+        targets: Optional[Sequence[BulletTarget]] = None,
     ) -> TailorPlan:
         """Call Gemini Flash to generate a structured TailorPlan."""
         resume_payload = {
@@ -485,6 +512,8 @@ should appear in the most relevant skills, summary, or selected bullets when
 the word/character budget permits. Generate a surgical, word-count-constrained
 TailorPlan, not a generic title rewrite.
 """
+        if targets is not None:
+            prompt += f"\n{EDIT_CONTRACT_RULES}\n{render_manifest(list(targets))}\n"
         if interview_mode:
             prompt += (
                 "\nINTERVIEW PREPARATION REQUEST:\n"

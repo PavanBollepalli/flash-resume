@@ -1,5 +1,6 @@
 """Tests for the SQLite application-history tracker and its API endpoints."""
 
+import sqlite3
 from datetime import date
 from pathlib import Path
 
@@ -135,3 +136,94 @@ def test_stats_endpoint(client: TestClient, db: Path):
     assert body["interview"] == 1
     assert body["offered"] == 1
     assert body["avg_ats"] == 83
+
+
+def test_latency_round_trips_through_history(db: Path):
+    tracking.log_application(
+        "Stripe", "Senior SWE", "stripe.pdf", ats_score=88,
+        llm_time_ms=2900.4, compile_time_ms=220.1, total_time_ms=3120.5,
+    )
+    app = tracking.get_recent_applications()[0]
+    assert app["llm_time_ms"] == 2900.4
+    assert app["compile_time_ms"] == 220.1
+    assert app["total_time_ms"] == 3120.5
+    assert tracking.get_application_by_id(app["id"])["total_time_ms"] == 3120.5
+
+
+def test_latency_endpoint_payload(client: TestClient, db: Path):
+    tracking.log_application(
+        "Stripe", "Senior SWE", "2026-10-17-1432_Stripe_Senior_SWE.pdf",
+        ats_score=88, llm_time_ms=2900.4, compile_time_ms=220.1, total_time_ms=3120.5,
+    )
+    tracking.log_application("Acme", "PM", "acme.pdf", ats_score=70)  # timings unrecorded
+
+    apps = client.get("/api/history?limit=5").json()["applications"]
+    measured = next(a for a in apps if a["company"] == "Stripe")
+    assert measured["total_time_ms"] == 3120.5
+    assert measured["llm_time_ms"] == 2900.4
+    assert measured["compile_time_ms"] == 220.1
+    # An unmeasured run reports None, never 0 — the UI renders it as "–".
+    assert next(a for a in apps if a["company"] == "Acme")["total_time_ms"] is None
+
+
+def test_get_stats_averages_latency_over_measured_rows(db: Path):
+    tracking.log_application(
+        "Stripe", "SWE", "a.pdf", ats_score=90,
+        llm_time_ms=2100.0, compile_time_ms=72.5, total_time_ms=2172.5,
+    )
+    tracking.log_application(
+        "Google", "SWE", "b.pdf", ats_score=80,
+        llm_time_ms=1800.0, compile_time_ms=65.0, total_time_ms=1865.0,
+    )
+    tracking.log_application("Acme", "PM", "c.pdf", ats_score=None)  # never measured
+
+    stats = tracking.get_stats()
+    assert stats["avg_ats"] == 85
+    # Unmeasured rows are skipped, not counted as zero-second runs.
+    assert stats["avg_total_ms"] == 2019  # (2172.5 + 1865)/2
+    assert stats["avg_llm_ms"] == 1950  # (2100 + 1800)/2
+    assert stats["avg_compile_ms"] == 69  # (72.5 + 65)/2, rounded
+
+
+def test_get_stats_latency_is_none_before_any_measured_run(db: Path):
+    tracking.log_application("Stripe", "SWE", "stripe.pdf", ats_score=88)
+    stats = tracking.get_stats()
+    assert stats["avg_total_ms"] is None
+    assert stats["avg_llm_ms"] is None
+    assert stats["avg_compile_ms"] is None
+
+
+def test_init_db_backfills_columns_added_by_later_builds(db: Path):
+    """A history.db written by an older build migrates in place, keeping its rows."""
+    with sqlite3.connect(db) as conn:
+        # The original table, before `status` and the timing columns existed.
+        conn.execute(
+            """
+            CREATE TABLE applications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                company TEXT NOT NULL,
+                role TEXT NOT NULL,
+                jd_snippet TEXT,
+                pdf_filename TEXT NOT NULL,
+                ats_score INTEGER,
+                mode TEXT DEFAULT 'truthful',
+                source TEXT DEFAULT 'cli'
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO applications (company, role, pdf_filename) VALUES (?, ?, ?)",
+            ("Old Co", "SWE", "old.pdf"),
+        )
+
+    tracking.init_db()  # must migrate, not raise
+
+    tracking.log_application("Stripe", "Senior SWE", "stripe.pdf", total_time_ms=3120.5)
+    rows = {row["company"]: row for row in tracking.get_recent_applications()}
+    assert set(rows) == {"Old Co", "Stripe"}
+    # The migrated row keeps its data and gains sensible defaults.
+    assert rows["Old Co"]["status"] == "applied"
+    assert rows["Old Co"]["total_time_ms"] is None
+    assert rows["Old Co"]["ats_score"] is None
+    assert rows["Stripe"]["total_time_ms"] == 3120.5

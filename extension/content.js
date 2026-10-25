@@ -20,6 +20,17 @@
       .slice(0, 60) || "resume";
   }
 
+  // The engine reports its own pipeline time in ms, split into model time and
+  // local compile. Older builds didn't measure it, and an absent value drops
+  // out of the toast rather than showing 0s.
+  function fmtMs(ms) {
+    if (ms == null || ms === "") return null;
+    const n = Number(ms);
+    if (Number.isNaN(n) || n <= 0) return null;
+    if (n < 1000) return `${Math.round(n)}ms`;
+    return `${(n / 1000).toFixed(n < 10000 ? 2 : 1)}s`;
+  }
+
   // NOTE: no chrome.downloads call anywhere. The server writes the PDF straight
   // into the user's Downloads folder as "<FirstName>_<Company>.pdf" — a browser
   // download would re-trigger Chrome's Save-As dialog, which we explicitly avoid.
@@ -198,12 +209,18 @@
       }
       const score = data.ats_match_score ?? "?";
       const pages = data.page_count ?? 1;
+      // Server-side wall-clock for this run, split so the model time is visible:
+      // the local compile is noise by comparison, and the browser round trip
+      // (transfer + base64 decode) is deliberately not folded in here.
+      const totalMs = fmtMs(data.total_time_ms);
+      const llmMs = fmtMs(data.llm_time_ms);
+      const timing = totalMs ? ` · ${totalMs}${llmMs ? ` (llm ${llmMs})` : ""}` : "";
       const filename = data.downloads_filename
         ? data.downloads_filename
         : `${new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-")}_${sanitizeName(data.company)}_${sanitizeName(data.role)}.pdf`;
 
       if (!data.pdf_base64) {
-        showToast(`✅ ATS ${score}% · ${pages}p · PDF ready (${data.pdf_path || "Desktop/FlashResume"})`);
+        showToast(`✅ ATS ${score}% · ${pages}p${timing} · PDF ready (${data.pdf_path || "Desktop/FlashResume"})`);
         return;
       }
 
@@ -213,8 +230,8 @@
       const attached = await tryAttachOnce(data.pdf_base64, filename);
       showToast(
         attached
-          ? `✅ ATS ${score}% · ${pages}p · resume auto-uploaded ✓`
-          : `✅ ATS ${score}% · ${pages}p · saved to Downloads (no upload field found)`,
+          ? `✅ ATS ${score}% · ${pages}p${timing} · resume auto-uploaded ✓`
+          : `✅ ATS ${score}% · ${pages}p${timing} · saved to Downloads (no upload field found)`,
       );
     } catch (err) {
       showToast(`❌ Can't reach the local engine. Run 'fs serve' or restart via 'fs autostart enable'.`, true);

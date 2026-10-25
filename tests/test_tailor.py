@@ -8,11 +8,11 @@ from flash_resume.models.resume import MasterResume, SkillCategory
 from flash_resume.models.tailoring import (
     BulletEdit,
     BulletOrder,
-    CoreTailorPlan,
+    CoreEditPlan,
     ContentPriority,
     EvidenceAssignment,
     JDKeywords,
-    ProjectTailorPlan,
+    ProjectEditPlan,
     SkillUpdate,
     TailorPlan,
 )
@@ -137,20 +137,11 @@ def test_split_plan_merges_disjoint_core_and_project_outputs():
     resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
 
     class FakeLLM:
-        def generate_core_tailor_plan(self, **kwargs):
-            return CoreTailorPlan(summary_edit="Backend-focused summary")
+        def generate_core_edit_plan(self, **kwargs):
+            return CoreEditPlan(summary_edit="Backend-focused summary")
 
-        def generate_project_tailor_plan(self, **kwargs):
-            return ProjectTailorPlan(
-                content_priorities=[
-                    ContentPriority(
-                        section="Projects",
-                        item_id="proj_1",
-                        priority="high",
-                        reason="Strong backend evidence",
-                    )
-                ]
-            )
+        def generate_project_edit_plan(self, **kwargs):
+            return ProjectEditPlan()
 
         def generate_tailor_plan(self, **kwargs):
             raise AssertionError("legacy fallback should not be used")
@@ -160,7 +151,10 @@ def test_split_plan_merges_disjoint_core_and_project_outputs():
     )
 
     assert plan.summary_edit == "Backend-focused summary"
-    assert plan.content_priorities[0].item_id == "proj_1"
+    # Ranking is derived by the engine from the accepted edits, so nothing a
+    # specialist returns can supply it (or contradict it).
+    assert plan.content_priorities == []
+    assert plan.bullet_orders == []
 
 
 def test_split_plan_falls_back_when_specialist_call_fails():
@@ -168,11 +162,11 @@ def test_split_plan_falls_back_when_specialist_call_fails():
     resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
 
     class FakeLLM:
-        def generate_core_tailor_plan(self, **kwargs):
+        def generate_core_edit_plan(self, **kwargs):
             raise RuntimeError("provider failure")
 
-        def generate_project_tailor_plan(self, **kwargs):
-            return ProjectTailorPlan()
+        def generate_project_edit_plan(self, **kwargs):
+            return ProjectEditPlan()
 
         def generate_tailor_plan(self, **kwargs):
             return TailorPlan(summary_edit="Fallback summary")
@@ -186,11 +180,11 @@ def test_split_plan_falls_back_when_specialist_call_fails():
 
 def test_split_plan_uses_safe_metadata_fallbacks():
     class FakeLLM:
-        def generate_core_tailor_plan(self, **kwargs):
-            return CoreTailorPlan(company="Infer", role="Infer")
+        def generate_core_edit_plan(self, **kwargs):
+            return CoreEditPlan(company="Infer", role="Infer")
 
-        def generate_project_tailor_plan(self, **kwargs):
-            return ProjectTailorPlan()
+        def generate_project_edit_plan(self, **kwargs):
+            return ProjectEditPlan()
 
         def generate_tailor_plan(self, **kwargs):
             raise AssertionError("legacy fallback should not be used")
@@ -299,8 +293,6 @@ def test_apply_tailor_plan():
                 bullet_index=0,
                 original_text=original_bullet,
                 replacement_text=replacement_text,
-                keywords_added=["scalable"],
-                word_count_delta=0,
             )
         ],
     )
@@ -336,8 +328,6 @@ def test_generate_diff_markdown():
                 bullet_index=0,
                 original_text="Old bullet text here.",
                 replacement_text="New tailored bullet text here.",
-                keywords_added=["Kubernetes"],
-                word_count_delta=0,
             )
         ],
     )

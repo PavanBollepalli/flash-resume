@@ -11,16 +11,22 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Optional
+import threading
+from typing import Optional, Sequence
 
 from openai import OpenAI
 
 from flash_resume.models.resume import MasterResume
 from flash_resume.models.tailoring import (
-    CoreTailorPlan,
+    CoreEditPlan,
     JDKeywords,
-    ProjectTailorPlan,
+    ProjectEditPlan,
     TailorPlan,
+)
+from flash_resume.services.edit_contract import (
+    EDIT_CONTRACT_RULES,
+    BulletTarget,
+    render_manifest,
 )
 from flash_resume.services.llm import (
     CONDENSE_SYSTEM_INSTRUCTION,
@@ -42,24 +48,39 @@ class GroqLLMService:
         self.api_key = api_key
         self.model = model
         self._client: Optional[OpenAI] = None
+        self._client_lock = threading.Lock()
 
     @property
     def client(self) -> OpenAI:
-        """Lazily initialize the Groq client."""
+        """Lazily initialize the Groq client, once, even under concurrency.
+
+        The two specialist calls run on a thread pool, so on this provider they
+        can reach a cold client simultaneously: without the lock each builds its
+        own, the loser's is dropped while it is still in flight, and the run
+        falls back to the legacy single-plan call.
+        """
         if self._client is None:
-            if not self.api_key:
-                raise ValueError(
-                    "GROQ_API_KEY is not set.\n"
-                    "Set it in your environment: export GROQ_API_KEY='your-key' (or $env:GROQ_API_KEY='your-key' in PowerShell)\n"
-                    "or paste it in the extension setup."
-                )
-            self._client = OpenAI(api_key=self.api_key, base_url=GROQ_BASE_URL)
+            with self._client_lock:
+                if self._client is None:
+                    if not self.api_key:
+                        raise ValueError(
+                            "GROQ_API_KEY is not set.\n"
+                            "Set it in your environment: export GROQ_API_KEY='your-key' (or $env:GROQ_API_KEY='your-key' in PowerShell)\n"
+                            "or paste it in the extension setup."
+                        )
+                    self._client = OpenAI(api_key=self.api_key, base_url=GROQ_BASE_URL)
         return self._client
 
     def _generate_split_plan(self, schema, payload: dict, job_description: str,
                              company_override: Optional[str], role_override: Optional[str],
                              supported_terms: Optional[list[str]], unsupported_terms: Optional[list[str]],
-                             jd_keywords: Optional[JDKeywords], instruction: str):
+                             jd_keywords: Optional[JDKeywords], instruction: str,
+                             targets: Optional[Sequence[BulletTarget]] = None):
+        contract = (
+            f"\n{EDIT_CONTRACT_RULES}\n{render_manifest(list(targets))}\n"
+            if targets is not None
+            else ""
+        )
         prompt = f"""Tailor only this resume scope for the target role.
 Use existing evidence only. Prioritize required supported JD terms, then
 preferred supported terms, then supported responsibilities. Never invent
@@ -76,6 +97,7 @@ REQUIRED TERMS: {", ".join(jd_keywords.required_keywords if jd_keywords else [])
 PREFERRED TERMS: {", ".join(jd_keywords.preferred_keywords if jd_keywords else [])}
 SUPPORTED TERMS: {", ".join(supported_terms or [])}
 UNSUPPORTED TERMS: {", ".join(unsupported_terms or [])}
+{contract}
 Return only JSON matching the supplied schema."""
         response = self.client.chat.completions.create(
             model=self.model,
@@ -93,40 +115,43 @@ Return only JSON matching the supplied schema."""
             raise ValueError("Groq returned an empty split tailoring response.")
         return schema.model_validate_json(text)
 
-    def generate_core_tailor_plan(
+    def generate_core_edit_plan(
         self, resume: MasterResume, job_description: str,
         company_override: Optional[str] = None, role_override: Optional[str] = None,
         supported_terms: Optional[list[str]] = None, unsupported_terms: Optional[list[str]] = None,
         jd_keywords: Optional[JDKeywords] = None, interview_mode: bool = False,
-    ) -> CoreTailorPlan:
+        targets: Optional[Sequence[BulletTarget]] = None,
+    ) -> CoreEditPlan:
         payload = {
             "summary": resume.summary,
             "skills": [item.model_dump(mode="json") for item in resume.skills],
             "experience": [item.model_dump(mode="json") for item in resume.experience],
         }
         plan = self._generate_split_plan(
-            CoreTailorPlan, payload, job_description, company_override, role_override,
+            CoreEditPlan, payload, job_description, company_override, role_override,
             supported_terms, unsupported_terms, jd_keywords,
             "Return summary_edit, skill_updates, experience_bullet_edits, "
-            "experience_bullet_orders, evidence_assignments, and preparation_skills.",
+            "evidence_assignments, and preparation_skills.",
+            targets,
         )
         if not interview_mode:
             plan.preparation_skills = []
         return plan
 
-    def generate_project_tailor_plan(
+    def generate_project_edit_plan(
         self, resume: MasterResume, job_description: str,
         company_override: Optional[str] = None, role_override: Optional[str] = None,
         supported_terms: Optional[list[str]] = None, unsupported_terms: Optional[list[str]] = None,
         jd_keywords: Optional[JDKeywords] = None,
-    ) -> ProjectTailorPlan:
+        targets: Optional[Sequence[BulletTarget]] = None,
+    ) -> ProjectEditPlan:
         return self._generate_split_plan(
-            ProjectTailorPlan,
+            ProjectEditPlan,
             {"projects": [item.model_dump(mode="json") for item in resume.projects]},
             job_description, company_override, role_override, supported_terms,
             unsupported_terms, jd_keywords,
-            "Return project_bullet_edits, project_bullet_orders, content_priorities, "
-            "and evidence_assignments.",
+            "Return project_bullet_edits and evidence_assignments.",
+            targets,
         )
 
     def parse_resume_from_text(self, raw_text: str) -> MasterResume:
@@ -201,6 +226,7 @@ Return only JSON matching the supplied schema."""
         unsupported_terms: Optional[list[str]] = None,
         jd_keywords: Optional[JDKeywords] = None,
         interview_mode: bool = False,
+        targets: Optional[Sequence[BulletTarget]] = None,
     ) -> TailorPlan:
         """Call Groq to generate a structured TailorPlan (same contract as LLMService)."""
         resume_payload = {
@@ -247,11 +273,11 @@ keywords and responsibilities determine content priorities. Rank required
 supported keywords first, then supported preferred keywords, then supported
 responsibilities and domain language. Use exact JD wording where equivalent
 resume evidence exists, and keep unsupported terms out of the normal resume.
-Return content_priorities for every experience/project item,
-evidence_assignments for important covered requirements, and complete
-bullet_orders that place role-relevant evidence first without dropping or
-duplicating bullets.
+Return evidence_assignments for important covered requirements.
 """
+
+        if targets is not None:
+            prompt += f"\n{EDIT_CONTRACT_RULES}\n{render_manifest(list(targets))}\n"
 
         if jd_keywords and (jd_keywords.required_keywords or jd_keywords.preferred_keywords):
             prompt += (

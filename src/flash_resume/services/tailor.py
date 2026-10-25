@@ -9,7 +9,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import pypdf
 
@@ -17,8 +17,9 @@ from flash_resume.config import AppConfig
 from flash_resume.models.resume import MasterResume
 from flash_resume.models.tailoring import (
     JDKeywords,
-    CoreTailorPlan,
-    ProjectTailorPlan,
+    CoreEditPlan,
+    ProjectEditPlan,
+    EditFunnel,
     EvidenceAssignment,
     RejectedBulletEdit,
     RequirementMatch,
@@ -26,6 +27,20 @@ from flash_resume.models.tailoring import (
     TailorResult,
 )
 from flash_resume.services.compiler import CompilerService
+from flash_resume.services.edit_contract import (
+    BulletTarget,
+    REJECTION_LABELS,
+    adds_supported_evidence,
+    absorbable_terms,
+    build_targets,
+    derive_bullet_orders,
+    derive_content_priorities,
+    echoes_keep_list,
+    missing_facts,
+    resolve_target,
+    unevidenced_terms_introduced,
+    within_budget,
+)
 from flash_resume.services.evidence import (
     align_resume_to_jd,
     coverage_score,
@@ -34,21 +49,25 @@ from flash_resume.services.evidence import (
     evaluate_requirements,
     soft_skill_labels,
 )
-from flash_resume.services.llm import LLMService
 from flash_resume.services.parser import _clean_text
-from flash_resume.services.validator import validate_bullet_length
+from flash_resume.services.providers import build_llm_service
 
 
 logger = logging.getLogger("flash_resume.tailor")
 
 
 def merge_split_plans(
-    core: CoreTailorPlan,
-    projects: ProjectTailorPlan,
+    core: CoreEditPlan,
+    projects: ProjectEditPlan,
     company: Optional[str],
     role: Optional[str],
 ) -> TailorPlan:
-    """Merge disjoint specialist outputs into the existing full plan schema."""
+    """Merge disjoint specialist outputs into the existing full plan schema.
+
+    Bullet ordering and content priorities are deliberately absent: both are
+    derived from the accepted edit set in :func:`sanitize_tailor_plan`, so no
+    model output can disagree with the edits that actually landed.
+    """
     inferred_company = company or core.company
     if not inferred_company or inferred_company.casefold() in {"infer", "unknown", "n/a"}:
         inferred_company = "Company"
@@ -61,8 +80,6 @@ def merge_split_plans(
         summary_edit=core.summary_edit,
         skill_updates=core.skill_updates,
         bullet_edits=core.experience_bullet_edits + projects.project_bullet_edits,
-        bullet_orders=core.experience_bullet_orders + projects.project_bullet_orders,
-        content_priorities=projects.content_priorities,
         evidence_assignments=core.evidence_assignments + projects.evidence_assignments,
         preparation_skills=core.preparation_skills,
     )
@@ -78,8 +95,18 @@ def generate_split_plan(
     unsupported_terms: list[str],
     jd_keywords: JDKeywords,
     interview_mode: bool,
+    targets: Optional[list[BulletTarget]] = None,
+    funnel: Optional[EditFunnel] = None,
 ) -> TailorPlan:
-    """Run specialist calls concurrently, falling back to the legacy call."""
+    """Run specialist calls concurrently, falling back to the legacy call.
+
+    ``targets`` is the edit manifest: it tells each specialist which bullets it
+    may rewrite and on what terms. A specialist with no absorbable bullet to work
+    on is not called at all — the projects call in particular used to run (and
+    bill) even when the resume had no projects or no project bullet had a JD term
+    left to add. ``targets=None`` means "no manifest", which keeps the call pair
+    intact for direct callers.
+    """
     required = {
         "resume": resume,
         "job_description": job_description,
@@ -89,16 +116,32 @@ def generate_split_plan(
         "unsupported_terms": unsupported_terms,
         "jd_keywords": jd_keywords,
     }
+    core_targets = [t for t in targets or [] if t.section == "Experience"]
+    project_targets = [t for t in targets or [] if t.section == "Projects"]
+    projects_have_work = targets is None or any(t.can_add for t in project_targets)
     try:
         with ThreadPoolExecutor(max_workers=2) as pool:
             core_future = pool.submit(
-                llm.generate_core_tailor_plan,
+                llm.generate_core_edit_plan,
                 **required,
+                targets=core_targets,
                 interview_mode=interview_mode,
             )
-            project_future = pool.submit(llm.generate_project_tailor_plan, **required)
+            project_future = (
+                pool.submit(llm.generate_project_edit_plan, **required, targets=project_targets)
+                if projects_have_work
+                else None
+            )
             core = core_future.result()
-            projects = project_future.result()
+            if project_future is None:
+                projects = ProjectEditPlan()
+                if funnel is not None:
+                    funnel.projects_call_skipped = True
+                logger.info(
+                    "Skipped the projects specialist: no project bullet has a JD term left to add."
+                )
+            else:
+                projects = project_future.result()
         return merge_split_plans(
             core,
             projects,
@@ -107,7 +150,9 @@ def generate_split_plan(
         )
     except Exception:
         logger.exception("Split tailoring failed; using the legacy full-plan call.")
-        return llm.generate_tailor_plan(**required, interview_mode=interview_mode)
+        if funnel is not None:
+            funnel.legacy_fallback_used = True
+        return llm.generate_tailor_plan(**required, interview_mode=interview_mode, targets=targets)
 
 
 EVIDENCE_TERMS = (
@@ -129,57 +174,51 @@ GENERIC_SKILL_TERMS = {
     "full-stack experience",
     "technical skills",
 }
-OUTCOME_PATTERNS = (
-    r"\bachiev(?:e|es|ed|ing)\b",
-    r"\bautomat(?:e|es|ed|ing)\b",
-    r"\bdecreas(?:e|es|ed|ing)\b",
-    r"\beliminat(?:e|es|ed|ing)\b",
-    r"\bimprov(?:e|es|ed|ing)\b",
-    r"\bincreas(?:e|es|ed|ing)\b",
-    r"\boptimiz(?:e|es|ed|ing)\b",
-    r"\bpublish(?:e|es|ed|ing)\b",
-    r"\breduc(?:e|es|ed|ing)\b",
-    r"\bresolv(?:e|es|ed|ing)\b",
-    r"\bsav(?:e|es|ed|ing)\b",
-    r"\bshipp(?:e|s|ed|ing)\b",
-)
-
-
-def _protected_bullet_facts(text: str) -> set[str]:
-    """Return concrete facts that a rewrite must not silently remove."""
-    return set(re.findall(r"\b\d+(?:\.\d+)?%?\b", text.casefold()))
-
-
-def _preserves_bullet_facts(original: str, replacement: str) -> bool:
-    original_lower = original.casefold()
-    replacement_lower = replacement.casefold()
-    if not _protected_bullet_facts(original).issubset(_protected_bullet_facts(replacement)):
-        return False
-    original_outcomes = {
-        pattern for pattern in OUTCOME_PATTERNS if re.search(pattern, original_lower)
-    }
-    replacement_outcomes = {
-        pattern for pattern in OUTCOME_PATTERNS if re.search(pattern, replacement_lower)
-    }
-    return not original_outcomes or bool(original_outcomes & replacement_outcomes)
-
-
-def _within_bullet_budget(original: str, replacement: str) -> bool:
-    """Allow limited safe compaction when the rewrite preserves evidence."""
-    valid, word_delta, width_ratio = validate_bullet_length(original, replacement)
-    if valid:
-        return True
-    return (
-        word_delta >= -4
-        and 0.75 <= width_ratio <= 1.12
-        and _preserves_bullet_facts(original, replacement)
-    )
 
 
 def sanitize_filename(name: str) -> str:
     """Sanitize a string for safe filesystem naming."""
     clean = re.sub(r"[^\w\s-]", "", name).strip()
     return re.sub(r"[-\s]+", "_", clean)
+
+
+def _edit_sections(resume: MasterResume, section: str) -> tuple:
+    """Candidate item lists for an edit, in the order its section implies."""
+    value = (section or "").casefold()
+    if "exp" in value:
+        return (resume.experience,)
+    if "proj" in value:
+        return (resume.projects,)
+    return (resume.experience, resume.projects)
+
+
+def _locate_bullet(resume: MasterResume, edit) -> Optional[tuple[Any, int]]:
+    """Find the bullet list and index an edit refers to in ``resume``.
+
+    Identity is the structured handle — ``(section, item_id, bullet_index)`` —
+    never the model's echo of the original text, which may be paraphrased, left
+    empty, or (on a hand-built plan) stale. The text is only consulted as a
+    repair when the handle does not land, and only when it is unambiguous.
+    """
+    for items in _edit_sections(resume, edit.section):
+        for item in items:
+            if item.id != edit.item_id:
+                continue
+            if 0 <= edit.bullet_index < len(item.bullets):
+                return item, edit.bullet_index
+            if len(item.bullets) == 1:
+                return item, 0
+    if edit.original_text:
+        for items in _edit_sections(resume, edit.section):
+            hits = [
+                (item, index)
+                for item in items
+                for index, bullet in enumerate(item.bullets)
+                if bullet == edit.original_text
+            ]
+            if len(hits) == 1:
+                return hits[0]
+    return None
 
 
 def apply_tailor_plan(resume: MasterResume, plan: TailorPlan) -> MasterResume:
@@ -223,25 +262,19 @@ def apply_tailor_plan(resume: MasterResume, plan: TailorPlan) -> MasterResume:
                 cat.items = new_items
                 break
 
-    # 2. Update Bullets in Experience and Projects
+    # 2. Update Bullets in Experience and Projects. The layout budget stays
+    # enforced here as well as in the sanitizer so a hand-built plan cannot
+    # bypass it, but it is measured against the bullet actually present rather
+    # than against whatever text the plan carries.
     for edit in plan.bullet_edits:
         if edit.action == "skip":
             continue
-        if not _within_bullet_budget(edit.original_text, edit.replacement_text):
+        located = _locate_bullet(tailored, edit)
+        if located is None:
             continue
-        target_section = edit.section.strip().lower()
-        if "exp" in target_section:
-            for exp in tailored.experience:
-                if exp.id == edit.item_id or not edit.item_id:
-                    if 0 <= edit.bullet_index < len(exp.bullets):
-                        exp.bullets[edit.bullet_index] = edit.replacement_text
-                        break
-        elif "proj" in target_section:
-            for proj in tailored.projects:
-                if proj.id == edit.item_id or not edit.item_id:
-                    if 0 <= edit.bullet_index < len(proj.bullets):
-                        proj.bullets[edit.bullet_index] = edit.replacement_text
-                        break
+        item, index = located
+        if within_budget(item.bullets[index], edit.replacement_text):
+            item.bullets[index] = edit.replacement_text
 
     # 3. Reorder bullets only when the model supplies a complete, valid
     # permutation. This preserves content and avoids accidental data loss.
@@ -371,8 +404,17 @@ def sanitize_tailor_plan(
     jd_keywords: Optional[JDKeywords] = None,
     assessment: Optional[list[RequirementMatch]] = None,
     interview_mode: bool = False,
+    targets: Optional[list[BulletTarget]] = None,
+    funnel: Optional[EditFunnel] = None,
 ) -> TailorPlan:
-    """Remove unsupported model claims and edits that violate layout constraints."""
+    """Remove unsupported model claims and edits that violate layout constraints.
+
+    Bullet edits are checked against the same manifest the model was given
+    (:mod:`flash_resume.services.edit_contract`), so a rejection means the
+    rewrite broke a stated rule rather than that the model was never told the
+    rule. ``funnel`` collects the counts, which is what makes the cost of the
+    remaining rejections visible per run.
+    """
     sanitized = copy.deepcopy(plan)
     if assessment is None:
         if not jd_keywords or not (jd_keywords.required_keywords or jd_keywords.preferred_keywords):
@@ -429,91 +471,126 @@ def sanitize_tailor_plan(
     accepted_edits = []
     rejected_edits = list(sanitized.rejected_bullet_edits)
     skipped_edits = list(sanitized.skipped_bullet_edits)
-    for edit in sanitized.bullet_edits:
-        reason = None
-        if edit.action == "skip":
+    if targets is None:
+        targets = build_targets(resume, supported_terms)
+    if funnel is not None:
+        funnel.proposed = len(sanitized.bullet_edits)
+    effective: dict[tuple[str, int], str] = {}
+
+    def reject(edit, reason: str, code: str) -> None:
+        rejected_edits.append(
+            RejectedBulletEdit(
+                section=edit.section,
+                item_id=edit.item_id,
+                bullet_index=edit.bullet_index,
+                original_text=edit.original_text,
+                replacement_text=edit.replacement_text,
+                reason=reason,
+                code=code,
+            )
+        )
+        if funnel is not None:
+            funnel.count(code)
+
+    for proposed in sanitized.bullet_edits:
+        if proposed.action == "skip":
+            skipped_edits.append(
+                RejectedBulletEdit(
+                    section=proposed.section,
+                    item_id=proposed.item_id,
+                    bullet_index=proposed.bullet_index,
+                    original_text=proposed.original_text,
+                    replacement_text=proposed.replacement_text,
+                    reason="Model marked this edit as skip.",
+                    code="model_skip",
+                )
+            )
+            continue
+        target, repaired = resolve_target(proposed, targets)
+        if target is None:
+            reject(
+                proposed,
+                "Rejected because the edit did not name a bullet that exists in the master resume.",
+                "unresolved_target",
+            )
+            continue
+        # The engine owns the original text, so a paraphrased or missing echo is
+        # repaired here instead of costing the run the edit.
+        edit = proposed.model_copy(
+            update={
+                "section": target.section,
+                "item_id": target.item_id,
+                "bullet_index": target.bullet_index,
+                "original_text": target.text,
+            }
+        )
+        replacement = edit.replacement_text.strip()
+        if not replacement or replacement == target.text.strip():
             skipped_edits.append(
                 RejectedBulletEdit(
                     section=edit.section,
                     item_id=edit.item_id,
                     bullet_index=edit.bullet_index,
-                    original_text=edit.original_text,
+                    original_text=target.text,
                     replacement_text=edit.replacement_text,
-                    reason="Model marked this edit as skip.",
+                    reason="The rewrite was identical to the original bullet.",
+                    code="no_change",
                 )
             )
             continue
-        target_items = resume.experience if "exp" in edit.section.casefold() else resume.projects
-        target = next((item for item in target_items if item.id == edit.item_id), None)
-        if (
-            target is None
-            or edit.bullet_index < 0
-            or edit.bullet_index >= len(target.bullets)
-            or target.bullets[edit.bullet_index] != edit.original_text
-        ):
-            reason = "Rejected because the target bullet did not match the master resume."
-        elif not _preserves_bullet_facts(edit.original_text, edit.replacement_text):
-            reason = "Rejected because it removed a concrete metric, highlighted fact, or outcome."
-        elif not (
-            any(
-                contains_term(edit.replacement_text, term)
-                and not contains_term(edit.original_text, term)
-                for term in supported_terms
+        dropped = missing_facts(target.text, replacement)
+        if not target.can_add:
+            reject(
+                edit,
+                "Rejected because no supported JD term is left to add to this bullet.",
+                "no_absorbable_term",
             )
-            or (
-                any(contains_term(edit.original_text, term) for term in supported_terms)
-                and sum(
-                    contains_term(edit.replacement_text, term)
-                    for term in supported_terms
-                )
-                >= sum(
-                    contains_term(edit.original_text, term)
-                    for term in supported_terms
-                )
+        elif dropped:
+            reject(
+                edit,
+                f"Rejected because it removed a concrete metric or outcome ({', '.join(dropped)}).",
+                "facts_dropped",
             )
-        ):
-            reason = "Rejected because it did not preserve or add supported JD evidence."
-        elif not _within_bullet_budget(edit.original_text, edit.replacement_text):
-            reason = "Rejected by the word/typographic-width safety budget."
-        if reason:
-            rejected_edits.append(
-                RejectedBulletEdit(
-                    section=edit.section,
-                    item_id=edit.item_id,
-                    bullet_index=edit.bullet_index,
-                    original_text=edit.original_text,
-                    replacement_text=edit.replacement_text,
-                    reason=reason,
-                )
+        elif not adds_supported_evidence(replacement, target.text, supported_terms):
+            reject(
+                edit,
+                "Rejected because it did not preserve or add supported JD evidence.",
+                "no_new_evidence",
             )
+        elif not within_budget(target.text, replacement):
+            reject(edit, "Rejected by the word/typographic-width safety budget.", "over_budget")
         else:
             accepted_edits.append(edit)
+            effective[(target.item_id, target.bullet_index)] = replacement
+            if funnel is not None:
+                funnel.applied += 1
+                if repaired:
+                    funnel.repaired += 1
+                if not echoes_keep_list(edit.preserved_facts, target.keep):
+                    funnel.undeclared_facts += 1
+                # Reported, not gated: see unevidenced_terms_introduced's note on
+                # why a matcher-dependent rejection here would be unsafe.
+                for term in unevidenced_terms_introduced(
+                    replacement, target.text, unsupported_terms
+                ):
+                    funnel.unevidenced_terms.append(
+                        f"{term} ({target.key})"
+                    )
     sanitized.bullet_edits = accepted_edits
     sanitized.rejected_bullet_edits = rejected_edits
     sanitized.skipped_bullet_edits = skipped_edits
+    if funnel is not None:
+        funnel.skipped = len(skipped_edits) - len(plan.skipped_bullet_edits)
     valid_experience = {item.id: item for item in resume.experience}
     valid_projects = {item.id: item for item in resume.projects}
-    supported_lookup = {term.casefold() for term in supported_terms}
-    sanitized.content_priorities = [
-        priority
-        for priority in sanitized.content_priorities
-        if (
-            priority.section == "Experience" and priority.item_id in valid_experience
-        ) or (
-            priority.section == "Projects" and priority.item_id in valid_projects
-        )
-    ]
-    sanitized.content_priorities = [
-        priority.model_copy(
-            update={
-                "supported_keywords": [
-                    keyword for keyword in priority.supported_keywords
-                    if keyword.casefold() in supported_lookup
-                ]
-            }
-        )
-        for priority in sanitized.content_priorities
-    ]
+    # Ordering and per-item relevance are derived locally, from the same
+    # supported terms the gates used and the text that survived them. The model
+    # used to be asked for both; a locally computed ranking cannot arrive
+    # truncated, cannot disagree with the accepted edits, and costs nothing.
+    sanitized.content_priorities = derive_content_priorities(
+        resume, supported_terms, effective
+    )
+    sanitized.bullet_orders = derive_bullet_orders(resume, supported_terms, effective)
     valid_assignments = [
         assignment
         for assignment in sanitized.evidence_assignments
@@ -528,19 +605,6 @@ def sanitize_tailor_plan(
             and assignment.bullet_index is not None
             and 0 <= assignment.bullet_index < len(valid_projects[assignment.item_id].bullets)
         ) or assignment.section in {"summary", "skills"}
-    ]
-    sanitized.bullet_orders = [
-        order
-        for order in sanitized.bullet_orders
-        if (
-            order.section == "Experience"
-            and order.item_id in valid_experience
-            and sorted(order.bullet_indices) == list(range(len(valid_experience[order.item_id].bullets)))
-        ) or (
-            order.section == "Projects"
-            and order.item_id in valid_projects
-            and sorted(order.bullet_indices) == list(range(len(valid_projects[order.item_id].bullets)))
-        )
     ]
     # Keep one primary assignment per requirement and prefer the strongest
     # source. This prevents parallel specialist calls from inflating the report.
@@ -561,6 +625,7 @@ def generate_diff_markdown(
     plan: TailorPlan,
     page_count: int,
     compile_time_ms: float,
+    funnel: Optional[EditFunnel] = None,
 ) -> str:
     """Generate a clean Markdown diff report of all modifications."""
 
@@ -650,6 +715,82 @@ def generate_diff_markdown(
             f"| {table_cell(edit.section)} | {table_cell(edit.original_text)} | "
             f"{table_cell(edit.reason)} |"
         )
+    if funnel is not None:
+        lines.extend([
+            "",
+            "## Bullet Edit Funnel",
+            "",
+            f"- {funnel.headline()}",
+            (
+                f"- **Bullets with a JD term left to add:** {funnel.editable_targets}; "
+                f"**already carrying every supported term:** {funnel.locked_targets}"
+            ),
+            "",
+            "| Outcome | Count |",
+            "| --- | --- |",
+            f"| Edits proposed | {funnel.proposed} |",
+            f"| Applied | {funnel.applied} |",
+            f"| Rejected by a gate | {funnel.rejected} |",
+            f"| Skipped by the model | {funnel.skipped} |",
+            f"| Accepted after a local repair | {funnel.repaired} |",
+            f"| Accepted without a complete facts echo | {funnel.undeclared_facts} |",
+        ])
+        if funnel.unevidenced_terms:
+            lines.extend([
+                "",
+                "- **Terms written into a bullet with no matching resume evidence:** "
+                + ", ".join(funnel.unevidenced_terms)
+                + ". These are accepted edits, not rejections — the evidence matcher "
+                "does not link every equivalent phrasing, so this is reported for review.",
+            ])
+        if funnel.reasons:
+            lines.extend([
+                "",
+                "| Rejection reason | Count |",
+                "| --- | --- |",
+            ])
+            for code, count in sorted(funnel.reasons.items(), key=lambda row: -row[1]):
+                lines.append(f"| {table_cell(REJECTION_LABELS.get(code, code))} | {count} |")
+        lines.extend([
+            "",
+            "Rejected edits are rewrites the run paid for and did not use; each reason "
+            "above is a rule the model was given in its prompt.",
+        ])
+    lines.extend([
+        "",
+        "## Bullet Ordering",
+        "",
+        "| Section | Item | New Order |",
+        "| --- | --- | --- |",
+    ])
+    for order in plan.bullet_orders:
+        item = next(
+            (
+                candidate
+                for candidate in (
+                    original.experience if order.section == "Experience" else original.projects
+                )
+                if candidate.id == order.item_id
+            ),
+            None,
+        )
+        bullets = (
+            "; ".join(
+                f"{index + 1}: {_clean_text(item.bullets[index])}"
+                for index in order.bullet_indices
+                if item and 0 <= index < len(item.bullets)
+            )
+            or "—"
+        )
+        lines.append(
+            f"| {table_cell(order.section)} | {table_cell(order.item_id)} | {table_cell(bullets)} |"
+        )
+    lines.extend([
+        "",
+        "Bullets are ranked locally by supported-JD-term density, then by whether they "
+        "carry a metric or an outcome verb, so this ordering is reproducible and cannot "
+        "disagree with the accepted edits. Positions are 1-based from the master resume.",
+    ])
     lines.extend([
         "",
         "## Role-Focused Content Plan",
@@ -894,19 +1035,10 @@ class TailorEngine:
     def __init__(self, config: AppConfig):
         self.config = config
         self.compiler = CompilerService()
-        if config.llm_provider == "groq":
-            from flash_resume.services.groq_llm import GroqLLMService
-
-            self.llm = GroqLLMService(
-                api_key=config.resolve_groq_api_key(),
-                model=config.groq_model,
-            )
-        else:
-            self.llm = LLMService(
-                api_key=config.resolve_api_key(),
-                model=config.default_model,
-            )
-        self.model = config.groq_model if config.llm_provider == "groq" else config.default_model
+        # Provider → service assembly lives in services.providers so the CLI's
+        # setup and import flows build the exact object this engine runs.
+        self.llm, self.provider_label = build_llm_service(config)
+        self.model = self.llm.model
 
     def tailor(
         self,
@@ -947,6 +1079,16 @@ class TailorEngine:
             jd_keywords = JDKeywords(required_keywords=fallback_terms)
         initial_assessment = evaluate_requirements(master_resume, jd_keywords)
         supported_terms, unsupported_terms = coverage_terms(initial_assessment)
+        # One manifest, read by both the prompt and the gates: the bullets that
+        # may be rewritten, the facts they must keep, and the terms each may
+        # absorb. Generic professional skills are excluded from what a bullet can
+        # absorb — they are matched as their own class with no resume evidence
+        # behind them, so inviting the model to insert them would be stuffing.
+        targets = build_targets(master_resume, absorbable_terms(initial_assessment))
+        funnel = EditFunnel(
+            editable_targets=sum(1 for target in targets if target.can_add),
+            locked_targets=sum(1 for target in targets if not target.can_add),
+        )
         plan = sanitize_tailor_plan(
             generate_split_plan(
                 llm=self.llm,
@@ -958,14 +1100,24 @@ class TailorEngine:
                 supported_terms=supported_terms,
                 unsupported_terms=unsupported_terms,
                 interview_mode=interview_mode,
+                targets=targets,
+                funnel=funnel,
             ),
             master_resume,
             job_description,
             jd_keywords,
             assessment=initial_assessment,
             interview_mode=interview_mode,
+            targets=targets,
+            funnel=funnel,
         )
         llm_time_ms = (time.perf_counter() - llm_started_at) * 1000
+        logger.info("Edit funnel | %s", funnel.headline())
+        if funnel.unevidenced_terms:
+            logger.warning(
+                "Accepted edits introduced JD terms with no resume evidence: %s",
+                ", ".join(funnel.unevidenced_terms),
+            )
 
         # The JD's generic professional skills are derived deterministically from
         # the extracted keywords rather than requested from the model, so a
@@ -1024,6 +1176,7 @@ class TailorEngine:
             plan=plan,
             page_count=pages,
             compile_time_ms=compile_ms,
+            funnel=funnel,
         )
         diff_path.write_text(diff_md, encoding="utf-8")
 
@@ -1051,6 +1204,9 @@ class TailorEngine:
                 ats_score=plan.ats_match_score,
                 mode="interview_prep" if interview_mode else "truthful",
                 source=source,
+                llm_time_ms=llm_time_ms,
+                compile_time_ms=compile_ms,
+                total_time_ms=total_time_ms,
             )
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Could not log application history: %s", exc)
@@ -1063,5 +1219,6 @@ class TailorEngine:
             compile_time_ms=compile_ms,
             total_time_ms=total_time_ms,
             plan=plan,
+            edit_funnel=funnel,
             trim_applied=trim_applied,
         )

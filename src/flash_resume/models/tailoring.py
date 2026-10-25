@@ -7,7 +7,15 @@ from pydantic import BaseModel, Field
 
 
 class BulletEdit(BaseModel):
-    """A targeted edit on a single resume bullet point."""
+    """A targeted edit on a single resume bullet point.
+
+    ``original_text`` is no longer echoed back by the model: the engine resolves
+    the target from ``(section, item_id, bullet_index)`` against the master
+    resume and substitutes its own copy of the bullet, so a paraphrase can never
+    be mistaken for a miss. ``preserved_facts`` is the model's echo of the
+    target's ``keep`` list, which makes it enumerate what must survive before it
+    rewrites (see ``services.edit_contract``).
+    """
 
     action: Literal["replace", "skip"] = Field(
         default="replace",
@@ -16,11 +24,15 @@ class BulletEdit(BaseModel):
     section: str = Field(description="Section containing the bullet, e.g., 'Experience' or 'Projects'")
     item_id: str = Field(description="Identifier of parent experience or project item")
     bullet_index: int = Field(description="0-based index of the bullet in the item's bullets list")
-    original_text: str = Field(description="Existing original bullet text")
+    original_text: str = Field(
+        default="",
+        description="Optional; the engine substitutes the master resume's own copy of the bullet.",
+    )
     replacement_text: str = Field(description="Rewritten bullet text integrating targeted ATS keywords")
-    keywords_added: List[str] = Field(default_factory=list, description="Keywords specifically incorporated")
-    word_count_delta: int = Field(default=0, description="Difference in word count (new - original)")
-
+    preserved_facts: List[str] = Field(
+        default_factory=list,
+        description="Every entry of the target's 'keep' list, copied verbatim before rewriting",
+    )
 
 
 class RejectedBulletEdit(BaseModel):
@@ -32,6 +44,10 @@ class RejectedBulletEdit(BaseModel):
     original_text: str
     replacement_text: str
     reason: str
+    code: str = Field(
+        default="",
+        description="Machine-readable reason key, e.g. 'facts_dropped'; used for the funnel report",
+    )
 
 
 class SkillUpdate(BaseModel):
@@ -71,25 +87,28 @@ class BulletOrder(BaseModel):
     bullet_indices: List[int]
 
 
-class CoreTailorPlan(BaseModel):
-    """Partial plan for summary, skills, and professional experience."""
+class CoreEditPlan(BaseModel):
+    """What the core specialist is asked for: edits only.
+
+    Bullet ordering and per-item relevance ranking used to be requested here as
+    ``experience_bullet_orders``. Both are derived locally from the accepted
+    edit set (``services.edit_contract``), so asking a model for them bought
+    output that was then validated away, dropped, or overwritten.
+    """
 
     company: str = "Company"
     role: str = "Software Engineer"
     summary_edit: Optional[str] = None
     skill_updates: List[SkillUpdate] = Field(default_factory=list)
     experience_bullet_edits: List[BulletEdit] = Field(default_factory=list)
-    experience_bullet_orders: List[BulletOrder] = Field(default_factory=list)
     evidence_assignments: List[EvidenceAssignment] = Field(default_factory=list)
     preparation_skills: List[str] = Field(default_factory=list)
 
 
-class ProjectTailorPlan(BaseModel):
-    """Partial plan for project relevance, edits, and ordering."""
+class ProjectEditPlan(BaseModel):
+    """What the projects specialist is asked for: bullet edits only."""
 
     project_bullet_edits: List[BulletEdit] = Field(default_factory=list)
-    project_bullet_orders: List[BulletOrder] = Field(default_factory=list)
-    content_priorities: List[ContentPriority] = Field(default_factory=list)
     evidence_assignments: List[EvidenceAssignment] = Field(default_factory=list)
 
 
@@ -168,6 +187,68 @@ class JDKeywords(BaseModel):
     )
 
 
+class EditFunnel(BaseModel):
+    """Per-run accounting of what was proposed for bullets and what survived.
+
+    Rejected edits are compute the run already paid for, so the shape of the
+    loss belongs in the report next to the edits that landed rather than only in
+    a debug log. Counts are filled by the gates themselves, so the histogram
+    cannot drift from the reasons shown in the diff.
+    """
+
+    proposed: int = Field(default=0, description="Bullet edits the model returned")
+    applied: int = Field(default=0, description="Bullet edits that survived every gate")
+    rejected: int = Field(default=0, description="Bullet edits the gates refused")
+    skipped: int = Field(default=0, description="Bullets the model explicitly left alone")
+    repaired: int = Field(default=0, description="Edits accepted after a local identity/text repair")
+    editable_targets: int = Field(default=0, description="Bullets that had a JD term left to add")
+    locked_targets: int = Field(default=0, description="Bullets with no absorbable JD term")
+    undeclared_facts: int = Field(
+        default=0, description="Accepted edits whose preserved_facts echo was incomplete"
+    )
+    unevidenced_terms: List[str] = Field(
+        default_factory=list,
+        description=(
+            "JD terms an accepted edit introduced that the matcher found no resume "
+            "evidence for. Reported rather than rejected: the matcher has blind spots."
+        ),
+    )
+    projects_call_skipped: bool = Field(
+        default=False, description="The projects specialist call was skipped as it had no target"
+    )
+    legacy_fallback_used: bool = Field(
+        default=False, description="Specialist calls failed and the single full-plan call ran instead"
+    )
+    reasons: dict[str, int] = Field(
+        default_factory=dict, description="Rejection counts keyed by reason code"
+    )
+
+    def count(self, code: str) -> None:
+        """Record one rejection under its machine-readable reason code."""
+        self.reasons[code] = self.reasons.get(code, 0) + 1
+        self.rejected += 1
+
+    def headline(self) -> str:
+        """One line describing the funnel, for the log and the diff report."""
+        parts = [
+            f"{self.proposed} proposed",
+            f"{self.applied} applied",
+            f"{self.rejected} rejected",
+            f"{self.skipped} skipped",
+        ]
+        if self.repaired:
+            parts.append(f"{self.repaired} repaired locally")
+        if self.undeclared_facts:
+            parts.append(f"{self.undeclared_facts} without a facts echo")
+        if self.unevidenced_terms:
+            parts.append(f"{len(self.unevidenced_terms)} unevidenced term(s) introduced")
+        if self.projects_call_skipped:
+            parts.append("projects call skipped (no target)")
+        if self.legacy_fallback_used:
+            parts.append("legacy single-plan fallback")
+        return "Bullet edits: " + ", ".join(parts)
+
+
 class TailorResult(BaseModel):
     """Final artifact generation details and verification metrics."""
 
@@ -178,6 +259,9 @@ class TailorResult(BaseModel):
     compile_time_ms: float = Field(default=0.0, description="Local Typst compilation time in ms")
     total_time_ms: float = Field(default=0.0, description="Total tailoring pipeline time in ms")
     plan: TailorPlan = Field(description="The underlying tailoring plan applied")
+    edit_funnel: Optional[EditFunnel] = Field(
+        default=None, description="How many proposed bullet edits landed, and why the rest did not"
+    )
     trim_applied: bool = Field(
         default=False,
         description="Whether content was auto-trimmed to fit the page budget",

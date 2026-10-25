@@ -28,6 +28,7 @@ from flash_resume.config import (
 )
 from flash_resume.models.resume import MasterResume
 from flash_resume.services.compiler import CompilerService
+from flash_resume.services.providers import build_llm_service
 from flash_resume.services.tailor import TailorEngine
 from flash_resume.utils.diff import display_tailor_summary
 
@@ -48,26 +49,37 @@ def _normalize_path(raw: str) -> Path:
     return Path(clean).expanduser().resolve()
 
 
-def _build_llm_service(cfg: AppConfig):
-    """Build the parse/tailor LLM service for the active provider.
+def _mask(key: str) -> str:
+    """Show enough of a stored key to recognise it, never enough to use it."""
+    return f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
 
-    Returns ``(service, provider_label)`` and raises ``ValueError`` when the
-    active provider's API key is missing. Previously this flow hardcoded the
-    Gemini key, so Groq-configured users could never import a resume.
-    """
-    if cfg.llm_provider == "groq":
-        from flash_resume.services.groq_llm import GroqLLMService
 
-        api_key = cfg.resolve_groq_api_key()
-        if not api_key:
-            raise ValueError("GROQ_API_KEY is not set.")
-        return GroqLLMService(api_key=api_key, model=cfg.groq_model), "Groq"
-    from flash_resume.services.llm import LLMService
+def _prompt_groq_key(cfg: AppConfig, note: str = "") -> None:
+    """Collect the Groq key. An empty answer keeps whatever is already stored."""
+    console.print(f"\n[bold]Groq API Key[/bold]{note}")
+    current = cfg.resolve_groq_api_key()
+    if current:
+        console.print(f"Existing key detected: [green]{_mask(current)}[/green]")
+        key_input = Prompt.ask("Enter new key (or press Enter to keep)", default="")
+    else:
+        console.print("[dim]Get a free key at https://console.groq.com/keys[/dim]")
+        key_input = Prompt.ask("Enter your Groq API key (gsk_...)", default="")
+    if key_input:
+        cfg.groq_api_key = key_input.strip()
 
-    api_key = cfg.resolve_api_key()
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY is not set.")
-    return LLMService(api_key=api_key, model=cfg.default_model), "Gemini"
+
+def _prompt_gemini_key(cfg: AppConfig, note: str = "") -> None:
+    """Collect the Gemini key. An empty answer keeps whatever is already stored."""
+    console.print(f"\n[bold]Gemini API Key[/bold]{note}")
+    current = cfg.resolve_api_key()
+    if current:
+        console.print(f"Existing key detected: [green]{_mask(current)}[/green]")
+        key_input = Prompt.ask("Enter new key (or press Enter to keep)", default="")
+    else:
+        console.print("[dim]Get a free key at https://aistudio.google.com[/dim]")
+        key_input = Prompt.ask("Enter your Gemini API key", default="")
+    if key_input:
+        cfg.gemini_api_key = key_input.strip()
 
 
 app = typer.Typer(
@@ -160,7 +172,7 @@ def init_cmd() -> None:
                 default_resume_dir.write_text(repo_example.read_text(encoding="utf-8"), encoding="utf-8")
         else:
             try:
-                llm, provider = _build_llm_service(cfg)
+                llm, provider = build_llm_service(cfg)
             except ValueError as exc:
                 # Never write a raw PDF path as the master resume — that breaks
                 # doctor/tailor. Tell the user and use the starter instead.
@@ -239,7 +251,7 @@ def import_cmd(
         raise typer.Exit(code=1)
 
     try:
-        llm, provider = _build_llm_service(cfg)
+        llm, provider = build_llm_service(cfg)
     except ValueError as exc:
         console.print(f"[bold red]{exc}[/bold red]")
         console.print("Run 'fs init' first to configure your API key.")
@@ -412,11 +424,12 @@ def tailor_cmd(
         display_tailor_summary(result)
         return
 
-    engine = TailorEngine(cfg)
-    model_name = cfg.groq_model if cfg.llm_provider == "groq" else cfg.default_model
-    console.print(f"[dim]Engine: [cyan]{cfg.llm_provider}[/cyan] · Model: [cyan]{model_name}[/cyan][/dim]")
-
     try:
+        # Constructed inside the try: a missing API key and a SQLite failure
+        # both surface as the same one-line error instead of a traceback.
+        engine = TailorEngine(cfg)
+        model_name = engine.model
+        console.print(f"[dim]Engine: [cyan]{cfg.llm_provider}[/cyan] · Model: [cyan]{model_name}[/cyan][/dim]")
         with console.status(f"[bold cyan]Analyzing JD & tailoring resume with {model_name}...[/bold cyan]", spinner="dots"):
             result = engine.tailor(
                 job_description=jd_text,
@@ -468,12 +481,25 @@ def doctor_cmd() -> None:
     else:
         table.add_row("Master Resume", "[red]MISSING[/red]", "Set up via 'fs init'")
 
-    # 4. API Key
-    key = cfg.resolve_api_key()
-    if key:
-        table.add_row("Gemini API Key", "[green]OK[/green]", f"Configured ({key[:4]}...{key[-4:] if len(key)>8 else ''})")
-    else:
-        table.add_row("Gemini API Key", "[yellow]NOT SET[/yellow]", "Set GEMINI_API_KEY environment variable or in 'fs init'")
+    # 4. Provider and the keys that provider actually needs. Hybrid needs both,
+    # so reporting only the Gemini key would call a broken hybrid setup healthy.
+    table.add_row(
+        "AI Provider",
+        "[green]OK[/green]" if cfg.llm_provider in ("gemini", "groq", "hybrid") else "[red]UNKNOWN[/red]",
+        cfg.llm_provider + (" — Groq extracts keywords, Gemini plans" if cfg.llm_provider == "hybrid" else ""),
+    )
+
+    gemini_key = cfg.resolve_api_key()
+    if gemini_key:
+        table.add_row("Gemini API Key", "[green]OK[/green]", f"Configured ({_mask(gemini_key)})")
+    elif cfg.llm_provider in ("gemini", "hybrid"):
+        table.add_row("Gemini API Key", "[yellow]NOT SET[/yellow]", "Set GEMINI_API_KEY environment variable or in 'fs setup'")
+
+    groq_key = cfg.resolve_groq_api_key()
+    if groq_key:
+        table.add_row("Groq API Key", "[green]OK[/green]", f"Configured ({_mask(groq_key)})")
+    elif cfg.llm_provider in ("groq", "hybrid"):
+        table.add_row("Groq API Key", "[yellow]NOT SET[/yellow]", "Set GROQ_API_KEY environment variable or in 'fs setup'")
 
     # 5. Output Directory
     out_dir = Path(cfg.output_dir)
@@ -523,34 +549,26 @@ def setup_cmd() -> None:
     console.print("\n[bold]Step 1: AI Provider[/bold]")
     console.print("  [bold cyan]1[/bold cyan] - Gemini (best quality, ~6-9s per tailor)")
     console.print("  [bold cyan]2[/bold cyan] - Groq   (fastest, ~1-3s per tailor)")
-    provider_choice = Prompt.ask("Select a provider", choices=["1", "2"], default="2" if cfg.llm_provider == "groq" else "1")
-    cfg.llm_provider = "groq" if provider_choice == "2" else "gemini"
+    console.print("  [bold cyan]3[/bold cyan] - Hybrid (Groq extracts the JD keywords, Gemini plans the resume)")
+    provider_choice = Prompt.ask(
+        "Select a provider",
+        choices=["1", "2", "3"],
+        # Default to what is already configured, so re-running setup to change
+        # an unrelated step never silently switches providers.
+        default={"groq": "2", "hybrid": "3"}.get(cfg.llm_provider, "1"),
+    )
+    cfg.llm_provider = {"1": "gemini", "2": "groq", "3": "hybrid"}[provider_choice]
 
-    # 2. API key for the chosen provider
-    if cfg.llm_provider == "groq":
-        console.print("\n[bold]Step 2: Groq API Key[/bold]")
-        current = cfg.resolve_groq_api_key()
-        if current:
-            masked = current[:8] + "..." if len(current) > 8 else "***"
-            console.print(f"Existing key detected: [green]{masked}[/green]")
-            key_input = Prompt.ask("Enter new key (or press Enter to keep)", default="")
-        else:
-            console.print("[dim]Get a free key at https://console.groq.com/keys[/dim]")
-            key_input = Prompt.ask("Enter your Groq API key (gsk_...)", default="")
-        if key_input:
-            cfg.groq_api_key = key_input.strip()
-    else:
-        console.print("\n[bold]Step 2: Gemini API Key[/bold]")
-        current = cfg.resolve_api_key()
-        if current:
-            masked = current[:4] + "..." + current[-4:] if len(current) > 8 else "***"
-            console.print(f"Existing key detected: [green]{masked}[/green]")
-            key_input = Prompt.ask("Enter new key (or press Enter to keep)", default="")
-        else:
-            console.print("[dim]Get a free key at https://aistudio.google.com[/dim]")
-            key_input = Prompt.ask("Enter your Gemini API key", default="")
-        if key_input:
-            cfg.gemini_api_key = key_input.strip()
+    # 2. API key(s) for the chosen provider. Hybrid runs on both, so it asks for
+    # both — Groq first, because it only ever sees the job description.
+    two_keys = cfg.llm_provider == "hybrid"
+    console.print(f"\n[bold]Step 2: API Key{'s' if two_keys else ''}[/bold]")
+    if two_keys:
+        console.print("[dim]Hybrid uses two providers — one key for each.[/dim]")
+    if cfg.llm_provider in ("groq", "hybrid"):
+        _prompt_groq_key(cfg, " [dim](keyword extraction)[/dim]" if two_keys else "")
+    if cfg.llm_provider in ("gemini", "hybrid"):
+        _prompt_gemini_key(cfg, " [dim](resume planning)[/dim]" if two_keys else "")
 
     save_config(cfg)
     console.print(f"[green]✓ Provider and key saved to {get_config_file()}[/green]")
