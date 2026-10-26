@@ -58,6 +58,24 @@ TERM_CREDIT_CAP = 3
 
 _PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
 
+# A resume carries its technologies twice: as the structured ``technologies``
+# field, and — in a hand-written resume — as a trailing "Stack: ..." bullet. The
+# template renders that bullet as the Technologies line and suppresses its own
+# Tech Stack line when it is present.
+_STACK_PREFIXES = ("stack:", "tech stack:", "technologies:", "technology stack:")
+
+
+def is_stack_bullet(text: str) -> bool:
+    """Whether a bullet is the project's technology line rather than an outcome.
+
+    It matters because that line names every technology at once, so ranking
+    bullets by how much JD evidence they carry promotes it above the
+    accomplishments — a recruiter would read a list of tools before a single
+    result. It is metadata, so it stays last and is not offered for rewriting.
+    """
+    value = (text or "").strip().lstrip("*").strip().casefold()
+    return value.startswith(_STACK_PREFIXES)
+
 # Rejection codes are written for the funnel report, so each one is phrased as
 # the rule the model broke rather than as the internal name of the gate.
 REJECTION_LABELS = {
@@ -214,6 +232,11 @@ def build_targets(
     for section, items in (("Experience", resume.experience), ("Projects", resume.projects)):
         for item in items:
             for index, bullet in enumerate(item.bullets):
+                if is_stack_bullet(bullet):
+                    # The technology line is metadata, not an accomplishment. It
+                    # is never rewritten — rewriting it would just move names
+                    # around — and it is not offered to the model as a target.
+                    continue
                 targets.append(
                     BulletTarget(
                         section=section,
@@ -468,10 +491,19 @@ def derive_bullet_orders(
             bullets = _ordered_bullets(item.bullets, effective, item.id)
             if len(bullets) < 2:
                 continue
+            # The technology line is metadata and always belongs last, so it is
+            # pinned rather than ranked — otherwise its list of every tool in
+            # the project outscores the accomplishments that follow it.
+            content = [
+                index for index, bullet in enumerate(bullets) if not is_stack_bullet(bullet)
+            ]
+            metadata = [
+                index for index, bullet in enumerate(bullets) if is_stack_bullet(bullet)
+            ]
             ranked = sorted(
-                range(len(bullets)),
+                content,
                 key=lambda index: (-_bullet_strength(bullets[index], supported_terms), index),
-            )
+            ) + metadata
             if ranked != list(range(len(bullets))):
                 orders.append(
                     BulletOrder(section=section, item_id=item.id, bullet_indices=ranked)

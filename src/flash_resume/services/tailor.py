@@ -221,31 +221,63 @@ def _locate_bullet(resume: MasterResume, edit) -> Optional[tuple[Any, int]]:
     return None
 
 
+def _strip_familiarity_suffix(item: str) -> str:
+    """Remove a trailing "(familiarity)" from a skill label.
+
+    Only the exact trailing marker is removed, so a label that genuinely ends in
+    other parentheses — "pgvector (Hybrid Search)", "AWS (Certified)" — keeps
+    them. The category heading already carries the meaning.
+    """
+    stripped = item.strip()
+    if stripped.casefold().endswith("(familiarity)"):
+        return stripped[: -len("(familiarity)")].strip()
+    return stripped
+
+
 def apply_tailor_plan(resume: MasterResume, plan: TailorPlan) -> MasterResume:
     """Apply structured edits from a TailorPlan onto a MasterResume clone."""
     tailored = copy.deepcopy(resume)
     if plan.role and tailored.contact.title != plan.role:
         tailored.contact.title = plan.role
 
+    # Older runs wrote "(familiarity)" onto every item as well as naming the
+    # category, so the rendered line read "Familiarity: NumPy (familiarity),
+    # Pandas (familiarity)". The category heading already says it; drop the
+    # per-item copy so the line stops repeating itself, and so a skill is not
+    # spelled two different ways. This runs whether or not this run has
+    # preparation skills — a resume can carry the old shape into a truthful run.
+    familiarity = next(
+        (
+            item
+            for item in tailored.skills
+            if item.category.strip().casefold() == "familiarity"
+        ),
+        None,
+    )
+    if familiarity is not None:
+        familiarity.items = [
+            cleaned
+            for cleaned in (_strip_familiarity_suffix(item) for item in familiarity.items)
+            if cleaned
+        ]
+        if not familiarity.items:
+            # Nothing survived the strip, so the heading would render on its own.
+            tailored.skills = [
+                item for item in tailored.skills if item is not familiarity
+            ]
+            familiarity = None
+
     if plan.preparation_skills:
-        category = next(
-            (
-                item
-                for item in tailored.skills
-                if item.category.strip().casefold() == "familiarity"
-            ),
-            None,
-        )
-        if category is None:
+        if familiarity is None:
             from flash_resume.models.resume import SkillCategory
 
-            category = SkillCategory(category="Familiarity", items=[])
-            tailored.skills.append(category)
-        existing = {item.casefold() for item in category.items}
+            familiarity = SkillCategory(category="Familiarity", items=[])
+            tailored.skills.append(familiarity)
+        existing = {item.strip().casefold() for item in familiarity.items}
         for skill in plan.preparation_skills:
-            label = f"{skill.strip()} (familiarity)"
-            if skill.strip() and label.casefold() not in existing:
-                category.items.append(label)
+            label = skill.strip()
+            if label and label.casefold() not in existing:
+                familiarity.items.append(label)
                 existing.add(label.casefold())
 
     # 1. Update Skills

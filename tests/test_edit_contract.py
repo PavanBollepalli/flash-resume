@@ -551,3 +551,74 @@ def test_report_shows_the_funnel_and_the_ordering():
     assert "| a metric or outcome verb was dropped | 2 |" in report
     assert "## Bullet Ordering" in report
     assert "exp_acme" in report
+
+
+# -- the technology line is metadata, not an accomplishment ------------------
+
+
+def _project_with_stack(bullets) -> MasterResume:
+    resume = _resume()
+    resume.projects = [
+        ProjectItem(
+            id="proj_cache",
+            name="Cache",
+            technologies=["Python", "FastAPI"],
+            bullets=list(bullets),
+        )
+    ]
+    return resume
+
+
+def test_the_stack_line_is_recognised_as_metadata():
+    from flash_resume.services.edit_contract import is_stack_bullet
+
+    assert is_stack_bullet("Stack: Python, FastAPI")
+    assert is_stack_bullet("  stack: Python")
+    assert is_stack_bullet("Technologies: Python, FastAPI")
+    assert is_stack_bullet("Tech Stack: Python, FastAPI")
+    assert not is_stack_bullet("Built the service with Python and FastAPI")
+    assert not is_stack_bullet("Stacking boxes in the warehouse")
+
+
+def test_the_stack_line_is_never_offered_as_an_edit_target():
+    """Rewriting a list of tools is not an accomplishment, and the model
+    spending an edit on it is a wasted edit."""
+    resume = _project_with_stack(
+        [
+            "Built a cache for the payments team.",
+            "Stack: Python, FastAPI",
+        ]
+    )
+
+    targets = build_targets(resume, ["Docker"])
+    project_targets = [t for t in targets if t.section == "Projects"]
+
+    assert [target.key for target in project_targets] == ["proj_cache#0"]
+
+
+def test_the_stack_line_stays_last_when_bullets_are_ordered():
+    """It names every technology in the project at once, so ranking bullets by
+    how much JD evidence they carry would otherwise promote it above the
+    accomplishments that actually say what was built. Put the stack line FIRST
+    to prove the ordering pins it back to last."""
+    resume = _project_with_stack(
+        [
+            "Stack: Python, FastAPI",
+            "Partnered with design to ship the onboarding flow for new merchants.",
+            "Built a Python cache for the payments team.",
+        ]
+    )
+
+    orders = derive_bullet_orders(resume, ["Python", "FastAPI"])
+
+    order = next(order for order in orders if order.item_id == "proj_cache")
+    # The stack line (index 0) must end up last.
+    assert order.bullet_indices[-1] == 0
+    # The content bullets fill the earlier slots.
+    assert set(order.bullet_indices[:-1]) == {1, 2}
+
+
+def test_an_item_whose_only_bullet_is_the_stack_line_is_not_reordered():
+    resume = _project_with_stack(["Stack: Python, FastAPI"])
+
+    assert derive_bullet_orders(resume, ["Python"]) == []

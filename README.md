@@ -129,10 +129,16 @@ For example:
 ```text
 Existing evidence: Python
 JD requirement:    FastAPI
-Possible output:   FastAPI (familiarity)
+Possible output:   Familiarity: FastAPI
 ```
 
 These additions are kept separate from normal experience and skills. They are not presented as production experience, and they are not silently merged into existing bullets.
+
+The section heading carries the label, so each item is not marked again — the line
+reads `Familiarity: NumPy, Pandas, Scikit-learn`, not `NumPy (familiarity),
+Pandas (familiarity)`. Familiarity skills are also excluded from the evidence
+matcher: a tool the candidate has only encountered does not count as a
+supported skill, and it never raises the coverage score.
 
 Use this mode only for skills you are prepared to discuss honestly and learn enough to explain in an interview.
 
