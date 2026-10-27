@@ -28,6 +28,19 @@ function normScore(v) {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
+// Engine timings arrive in milliseconds. Below a second the raw figure is more
+// informative (820ms), above it seconds read faster; under 10s the extra decimal
+// is worth keeping (6.00s) since that is where the pipeline actually lives.
+// Rows logged before timings were recorded carry null — shown as "–", never as
+// a zero that would read as an instant run.
+function fmtMs(ms) {
+  if (ms == null || ms === "") return null;
+  const n = Number(ms);
+  if (Number.isNaN(n) || n <= 0) return null;
+  if (n < 1000) return `${Math.round(n)}ms`;
+  return `${(n / 1000).toFixed(n < 10000 ? 2 : 1)}s`;
+}
+
 // ---------------------------------------------------------------------------
 // Minimal markdown renderer (headings / lists / bold / code / pipe tables).
 // The diff report is a known, constrained format, so a small renderer keeps the
@@ -125,7 +138,27 @@ function atsCell(score) {
 }
 
 // ---------------------------------------------------------------------------
-// Pipeline overview (Total · Interview · Offers · Avg Signal)
+// Runtime cell — how long the engine took to produce this resume, split into
+// model time and local compile. The tagline: latency has no good/bad
+// thresholds, so it stays neutral, unlike the colour-coded ATS signal.
+// ---------------------------------------------------------------------------
+function runtimeCell(a) {
+  const total = fmtMs(a.total_time_ms);
+  if (total == null) {
+    return `<div class="runtime" title="No timings recorded for this run">–</div>`;
+  }
+  const parts = [];
+  const llm = fmtMs(a.llm_time_ms);
+  const compile = fmtMs(a.compile_time_ms);
+  if (llm) parts.push(`llm ${llm}`);
+  if (compile) parts.push(`compile ${compile}`);
+  const split = parts.length ? `<span class="rt-split">${parts.join(" · ")}</span>` : "";
+  const tip = parts.length ? ` — ${parts.join(", ")}` : "";
+  return `<div class="runtime" title="Total wall-clock${tip}"><span class="rt-total">${total}</span>${split}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline overview (Total · Interview · Offers · Avg Signal · Avg runtime)
 // ---------------------------------------------------------------------------
 async function loadStats() {
   try {
@@ -160,6 +193,31 @@ function renderStats(s) {
     if (stat) stat.setAttribute("data-level", avg >= 85 ? "hi" : avg >= 70 ? "mid" : "lo");
     if (signal) signal.style.width = `${Math.min(100, avg)}%`;
   }
+
+  renderRuntime(s);
+}
+
+// Average wall-clock per application, with the model/compile split underneath.
+// Rows recorded before timings were captured have no value, so the tile says so
+// rather than reporting a zero that looks like an instant run.
+function renderRuntime(s) {
+  const total = fmtMs(s.avg_total_ms);
+  const valEl = el("stats").querySelector(".i-runtime .val");
+  const subEl = el("runtimeBreakdown");
+  if (valEl) valEl.classList.remove("skeleton");
+  if (total == null) {
+    if (valEl) valEl.textContent = "–";
+    if (subEl) subEl.textContent = "no timings recorded";
+    return;
+  }
+  if (valEl) valEl.textContent = total;
+
+  const parts = [];
+  const llm = fmtMs(s.avg_llm_ms);
+  const compile = fmtMs(s.avg_compile_ms);
+  if (llm) parts.push(`llm ${llm}`);
+  if (compile) parts.push(`compile ${compile}`);
+  if (subEl) subEl.textContent = parts.join(" · ") || "no timings recorded";
 }
 
 async function load() {
@@ -207,6 +265,7 @@ function render(apps, total) {
         <td class="cell-company" data-label="Company"><div class="company">${escapeHtml(a.company)}</div><span class="company-sub">${escapeHtml(a.mode)}</span></td>
         <td class="role cell-role" data-label="Role">${escapeHtml(a.role)}</td>
         <td data-label="Signal">${atsCell(a.ats_score)}</td>
+        <td data-label="Runtime">${runtimeCell(a)}</td>
         <td data-label="Status"><select class="status-select ${statusClass(st)}" data-id="${a.id}" name="status" aria-label="Status">
           <option value="applied" ${st === "applied" ? "selected" : ""}>applied</option>
           <option value="interview" ${st === "interview" ? "selected" : ""}>interview</option>

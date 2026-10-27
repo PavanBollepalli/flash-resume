@@ -75,14 +75,17 @@ body { background: var(--fr-bg); color: var(--fr-text); padding: 44px 44px 60px;
 .page-sub { margin-top: 9px; font: 500 10.5px var(--fr-mono); letter-spacing: .18em; text-transform: uppercase; color: var(--fr-text-subtle); }
 
 /* ── Stats strip ─────────────────────────────────────────────────────── */
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--fr-border-subtle); border-bottom: 1px solid var(--fr-border-subtle); margin-bottom: 30px; }
+.stats { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--fr-border-subtle); border-bottom: 1px solid var(--fr-border-subtle); margin-bottom: 30px; }
 .stat { padding: 18px 24px 17px 0; }
 .stat + .stat { border-left: 1px solid var(--fr-border-subtle); padding-left: 24px; }
 .lbl { font: 600 10px var(--fr-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--fr-text-subtle); }
 .val { margin-top: 9px; font: 700 36px/1 var(--fr-font); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .val .u { font: 500 15px var(--fr-mono); color: var(--fr-text-subtle); margin-left: 2px; }
+.rt-sub { margin-top: 8px; font: 500 10.5px var(--fr-mono); color: var(--fr-text-subtle); white-space: nowrap; }
 .i-interview .val { color: var(--fr-warning); }
 .i-offered .val { color: var(--fr-success); }
+/* Runtime totals run longer than the counters ("19.8s"), so they step down a size. */
+.i-runtime .val { font-size: 30px; }
 .i-ats .signal { margin-top: 11px; width: 74px; height: 3px; border-radius: 2px; background: var(--fr-border-subtle); overflow: hidden; }
 .i-ats .signal i { display: block; height: 100%; background: var(--fr-text-subtle); }
 .i-ats[data-level="hi"]  .val { color: var(--fr-success); }  .i-ats[data-level="hi"]  .signal i { background: var(--fr-success); }
@@ -139,6 +142,12 @@ tbody tr:hover { background: var(--fr-surface-hover); }
 .ats.lo  .ats-num { color: var(--fr-danger); }   .ats.lo  .ats-meter i { background: var(--fr-danger); }
 .ats.na  .ats-num { color: var(--fr-text-subtle); }
 .ats.na  .ats-meter i { width: 0 !important; background: transparent; }
+
+/* Engine runtime cell — the timings of the run that produced this resume.
+   Neutral by design: it measures the tool, not the candidate's fit. */
+.runtime { font: 500 11.5px var(--fr-mono); color: var(--fr-text-muted); white-space: nowrap; }
+.runtime .rt-total { color: var(--fr-text); }
+.runtime .rt-split { display: block; margin-top: 2px; color: var(--fr-text-subtle); font-size: 10.5px; }
 
 .status-select {
   appearance: none; -webkit-appearance: none;
@@ -231,7 +240,7 @@ tbody tr:hover { background: var(--fr-surface-hover); }
   .stat { padding: 14px 14px 13px 0; }
   .stat:nth-child(2n) { border-left: 1px solid var(--fr-border-subtle); padding-left: 16px; }
   .stat:nth-child(n+3) { border-top: 1px solid var(--fr-border-subtle); }
-  .stat:nth-child(3) { border-left: none; padding-left: 0; }
+  .stat:nth-child(3), .stat:nth-child(5) { border-left: none; padding-left: 0; }
   .val { font-size: 30px; }
   thead { display: none; }
   table, tbody, tr, td { display: block; width: 100%; }
@@ -267,6 +276,7 @@ tbody tr:hover { background: var(--fr-surface-hover); }
       <div class="stat i-interview"><div class="lbl">In interview</div><div class="val skeleton">–</div></div>
       <div class="stat i-offered"><div class="lbl">Offers</div><div class="val skeleton">–</div></div>
       <div class="stat i-ats" data-level="na"><div class="lbl">Average ATS</div><div class="val skeleton">–</div><div class="signal"><i style="width:0%"></i></div></div>
+      <div class="stat i-runtime"><div class="lbl">Avg runtime</div><div class="val skeleton">–</div><div class="rt-sub" id="runtimeBreakdown"></div></div>
     </div>
 
     <div class="toolbar">
@@ -285,7 +295,7 @@ tbody tr:hover { background: var(--fr-surface-hover); }
         <thead>
           <tr>
             <th>Date</th><th>Company</th><th>Role</th><th>Signal</th>
-            <th>Status</th><th>Artifacts</th>
+            <th>Runtime</th><th>Status</th><th>Artifacts</th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>

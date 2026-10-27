@@ -13,8 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from flash_resume import __version__
-from flash_resume.config import load_config, save_config
+from flash_resume.config import AppConfig, load_config, save_config
 from flash_resume.models.resume import MasterResume
+from flash_resume.services.providers import PROVIDERS
 from flash_resume.services.tailor import TailorEngine
 
 # Surface pipeline logs (model + timings) in the `fs serve` terminal.
@@ -90,7 +91,7 @@ class GroqKeyRequest(BaseModel):
 
 
 class ProviderRequest(BaseModel):
-    provider: str = Field(min_length=1, description="Provider to use: 'gemini' or 'groq'")
+    provider: str = Field(min_length=1, description="Provider to use: 'gemini', 'groq', or 'hybrid'")
 
 
 class OutputDirRequest(BaseModel):
@@ -160,6 +161,21 @@ def _sanitize_filename_part(value: str) -> str:
     return " ".join(cleaned.split()).strip()
 
 
+def has_required_keys(cfg: AppConfig) -> bool:
+    """Report whether every API key the active provider needs is present.
+
+    Gemini and Groq each need one key; hybrid needs both, since its extraction
+    call and its planning calls run on different providers. An unrecognised
+    provider reports ``False`` — an unknown engine cannot run either.
+    """
+    required = {
+        "gemini": [cfg.resolve_api_key()],
+        "groq": [cfg.resolve_groq_api_key()],
+        "hybrid": [cfg.resolve_groq_api_key(), cfg.resolve_api_key()],
+    }.get(cfg.llm_provider)
+    return bool(required) and all(required)
+
+
 @app.get("/api/status")
 def get_status():
     """Return status of local Flash Resume engine and master resume."""
@@ -182,6 +198,10 @@ def get_status():
         "output_dir": cfg.output_dir,
         "has_api_key": bool(cfg.resolve_api_key()),
         "has_groq_key": bool(cfg.resolve_groq_api_key()),
+        # The one question the popup actually asks: can this provider run at
+        # all? Hybrid needs both keys, so clients shouldn't re-derive this from
+        # the provider name.
+        "has_required_keys": has_required_keys(cfg),
         "provider": cfg.llm_provider,
     }
 
@@ -206,10 +226,13 @@ def set_groq_key(req: GroqKeyRequest):
 
 @app.post("/api/config/provider")
 def set_provider(req: ProviderRequest):
-    """Switch the active LLM provider ('gemini' or 'groq')."""
+    """Switch the active LLM provider ('gemini', 'groq', or 'hybrid')."""
     provider = req.provider.strip().lower()
-    if provider not in ("gemini", "groq"):
-        raise HTTPException(status_code=400, detail="Provider must be 'gemini' or 'groq'.")
+    if provider not in PROVIDERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Provider must be one of: {', '.join(PROVIDERS)}.",
+        )
     cfg = load_config()
     cfg.llm_provider = provider
     save_config(cfg)
@@ -320,6 +343,11 @@ def _application_payload(app: dict) -> dict:
         "mode": app["mode"],
         "source": app["source"],
         "status": app["status"],
+        # Pipeline timings, mirroring the /api/tailor response. NULL for rows
+        # logged before timings were recorded.
+        "llm_time_ms": app["llm_time_ms"],
+        "compile_time_ms": app["compile_time_ms"],
+        "total_time_ms": app["total_time_ms"],
     }
 
 

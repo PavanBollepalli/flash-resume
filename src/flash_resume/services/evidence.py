@@ -261,6 +261,15 @@ def _singular(value: str) -> str:
     return " ".join(words)
 
 
+def _is_familiarity_category(category: str) -> bool:
+    """Whether a skills category holds familiarity rather than working knowledge.
+
+    The category is written by the engine, not the candidate, so this is a
+    reliable marker rather than a guess about wording.
+    """
+    return category.strip().casefold() == "familiarity"
+
+
 def resume_evidence(resume: MasterResume) -> list[EvidenceItem]:
     """Flatten only candidate-authored resume fields into traceable evidence."""
     evidence: list[EvidenceItem] = []
@@ -273,6 +282,14 @@ def resume_evidence(resume: MasterResume) -> list[EvidenceItem]:
     for index, award in enumerate(resume.awards):
         add(f"awards[{index}]", award)
     for category in resume.skills:
+        if _is_familiarity_category(category.category):
+            # A "Familiarity" line states the candidate has *encountered* a tool,
+            # not that they have used it in production. Counting it as evidence
+            # would let the score claim a skill the resume does not support, and
+            # "Familiarity: TensorFlow" matching a TensorFlow requirement is
+            # exactly the case that makes the score unusable in a live
+            # application. These are reported separately, not as support.
+            continue
         for index, item in enumerate(category.items):
             add(f"skills.{category.category}[{index}]", item)
     for exp in resume.experience:

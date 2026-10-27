@@ -170,6 +170,8 @@ main, .pop-section { display: block; }
 .app-score { font: 600 12px var(--fr-mono); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
 .app-score.hi { color: var(--fr-success); } .app-score.mid { color: var(--fr-warning); }
 .app-score.lo { color: var(--fr-danger); }  .app-score.na { color: var(--fr-text-subtle); }
+/* Engine time for that run — its own line, so it never squeezes the role/date. */
+.app-runtime { margin-top: 2px; font: 500 10px var(--fr-mono); color: var(--fr-text-subtle); font-variant-numeric: tabular-nums; }
 .app-pdf {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
   border: 1px solid var(--fr-border-subtle); border-radius: var(--fr-radius-control);

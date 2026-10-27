@@ -94,6 +94,8 @@ The report includes:
 - the evidence used for each matched requirement;
 - role-focused content priorities and evidence assignments;
 - applied bullet and skill changes;
+- the bullet edit funnel: what was proposed, applied, rejected, or skipped, with a rejection-reason histogram;
+- the derived bullet ordering for each item;
 - familiarity skills, when Interview mode is enabled;
 - page count and compilation timings.
 
@@ -127,10 +129,16 @@ For example:
 ```text
 Existing evidence: Python
 JD requirement:    FastAPI
-Possible output:   FastAPI (familiarity)
+Possible output:   Familiarity: FastAPI
 ```
 
 These additions are kept separate from normal experience and skills. They are not presented as production experience, and they are not silently merged into existing bullets.
+
+The section heading carries the label, so each item is not marked again — the line
+reads `Familiarity: NumPy, Pandas, Scikit-learn`, not `NumPy (familiarity),
+Pandas (familiarity)`. Familiarity skills are also excluded from the evidence
+matcher: a tool the candidate has only encountered does not count as a
+supported skill, and it never raises the coverage score.
 
 Use this mode only for skills you are prepared to discuss honestly and learn enough to explain in an interview.
 
@@ -148,6 +156,12 @@ Use this mode only for skills you are prepared to discuss honestly and learn eno
 └─────────────┘      └──────────────┬──────────────┘
                                     │
                                     ▼
+                         ┌──────────────────────────┐
+                         │ Bullet target manifest   │
+                         │ keep / can_add / budget  │
+                         └────────────┬─────────────┘
+                                      │
+                                      ▼
                          ┌──────────────────────────┐
                          │ Parallel specialist LLM  │
                          │ core + projects          │
@@ -171,12 +185,13 @@ Use this mode only for skills you are prepared to discuss honestly and learn eno
 
 1. You provide a job description.
 2. Flash Resume extracts the role, company, and ATS-relevant requirements.
-3. Gemini or Groq extracts the JD requirements and assesses existing evidence.
-4. Two focused tailoring calls run concurrently: one for summary, skills, and experience, and one for projects.
-5. The local merger validates IDs, evidence, bullet length, metrics, outcomes, and mode-specific rules.
-6. Unsupported claims are removed from the normal resume path; Interview mode keeps preparation skills separate.
-7. Typst compiles the document.
-8. The output is checked for page count and saved with a report. If a specialist call fails, the legacy full-plan call is used as a fallback.
+3. The configured provider extracts the JD requirements and assesses existing evidence.
+4. Editable bullets are turned into a target manifest: which bullets may change, what each must keep, which supported terms it may absorb, and its size budget. Bullets already carrying every supported term are excluded.
+5. Two focused tailoring calls run concurrently: one for summary, skills, and experience, and one for projects. The projects call is skipped when it has no target.
+6. The local merger resolves each proposed edit against the manifest, checks evidence, metrics, outcomes, bullet length, and mode-specific rules, and records what it refused and why.
+7. Unsupported claims are removed from the normal resume path; Interview mode keeps preparation skills separate. Bullet ordering and per-item relevance are computed here from the accepted edits.
+8. Typst compiles the document.
+9. The output is checked for page count and saved with a report. If a specialist call fails, the legacy full-plan call is used as a fallback.
 
 ### Evidence matching is more than exact keyword search
 
@@ -200,7 +215,7 @@ It also filters job-title/context phrases so `Software Engineer (AI)` is not inc
 
 - Windows for the background autostart integration;
 - Python 3.12 or newer;
-- a Gemini or Groq API key;
+- a Gemini or Groq API key (both, for hybrid mode);
 - Chrome, Brave, or Edge for the browser extension.
 
 ### Install from PyPI
@@ -217,13 +232,30 @@ fs setup
 
 The wizard configures:
 
-1. AI provider and API key;
+1. AI provider (Gemini, Groq, or Hybrid) and the API key or keys it needs;
 2. output directory;
 3. master resume import or creation;
 4. Windows login autostart;
 5. the bundled browser extension.
 
 `fs setup` registers the background engine and attempts to start it immediately. You do not need to leave a terminal open.
+
+### Choosing a provider
+
+| Provider | Extraction call | Planning calls | Use it when |
+| --- | --- | --- | --- |
+| `gemini` (default) | Gemini | Gemini | You want the strongest plan and don't mind the wait. |
+| `groq` | Groq | Groq | You want the fastest possible run. |
+| `hybrid` | Groq | Gemini | You want Gemini's plan without paying for its extraction step. |
+
+Hybrid is deliberately lopsided, and the split is measured rather than assumed:
+
+- **Extraction on Groq is a clear win** — 6.1s down to 1.4s on the same posting, and the extracted requirements were the *more* faithful of the two (13 of 15 kept the posting's qualifier, against 3 of 18 for Gemini).
+- **Planning on Groq is 4.4x slower** — rewriting a full resume's summary, skills, and experience against a schema took 47.8s against Gemini's 10.9s.
+
+So exactly one stage moves. That makes hybrid worth roughly a fifth of the run, not the several-fold speedup the name suggests. If a Groq call fails or returns nothing usable, extraction silently falls back to Gemini — a hiccup costs latency rather than a wrong ATS score, since extraction feeds the scorer.
+
+You can switch providers at any time by re-running `fs setup`; the extension picks the change up from the engine, and `fs doctor` reports which keys the active provider is missing.
 
 ### Load the extension once
 
@@ -343,7 +375,7 @@ fs autostart status
 curl http://127.0.0.1:13450/api/status
 ```
 
-The local status endpoint reports whether the engine is online, whether a master resume is configured, the active provider, and whether the relevant key is available.
+The local status endpoint reports whether the engine is online, whether a master resume is configured, the active provider, and whether that provider has every key it needs — `has_required_keys` is the one to watch in hybrid mode, which needs both.
 
 ---
 
@@ -404,7 +436,7 @@ flowchart LR
     API --> PIPELINE
 
     RESUME[("Master resume<br/>structured evidence")] --> PIPELINE
-    PIPELINE --> PLAN["LLM plan<br/>Gemini or Groq"]
+    PIPELINE --> PLAN["LLM plan<br/>Gemini, Groq, or hybrid"]
     PLAN --> GATE["Evidence gate<br/>covered · partial · unsupported"]
     RESUME --> GATE
     GATE --> EDITS["Sanitized edits<br/>Truthful or Interview mode"]
@@ -456,21 +488,53 @@ flash-resume/
 │   ├── services/
 │   │   ├── server.py           # FastAPI local API
 │   │   ├── tailor.py           # End-to-end orchestration
+│   │   ├── edit_contract.py    # Bullet manifest, repairs, and edit gates
 │   │   ├── evidence.py         # Deterministic evidence matching
 │   │   ├── compiler.py         # Typst + page-count verification
 │   │   ├── validator.py        # Edit and layout constraints
 │   │   ├── parser.py           # Resume import and sanitization
 │   │   ├── llm.py              # Gemini provider
-│   │   └── groq_llm.py         # Groq provider
+│   │   ├── groq_llm.py         # Groq provider
+│   │   ├── hybrid.py           # Per-stage routing between the two
+│   │   └── providers.py        # Provider string -> service assembly
 │   └── utils/diff.py           # Terminal summaries
 ├── templates/resume.typ        # ATS-friendly Typst template
 ├── examples/                   # Sample inputs
 └── tests/                      # Regression and unit tests
 ```
 
-The tailoring service uses separate `CoreTailorPlan` and `ProjectTailorPlan`
-schemas, merges them into the backward-compatible `TailorPlan`, and applies
-deterministic validation before generating artifacts.
+The tailoring service uses a separate `CoreEditPlan` and `ProjectEditPlan` for the
+two concurrent specialist calls, merges them into the backward-compatible
+`TailorPlan`, and applies deterministic validation before generating artifacts.
+
+### The bullet edit contract
+
+Every bullet edit the model proposes costs a call whether or not it survives
+validation, so the run hands the model the rules before it answers
+(`services/edit_contract.py`) and then checks the answer against that same
+manifest:
+
+- **Targets.** Each editable bullet is listed by `item_id`, 0-based index, the
+  facts it must keep, the supported JD terms it may absorb, and its word and
+  character budget. A bullet that already carries every supported term is
+  omitted, and a rewrite of one is refused. The projects call is skipped
+  outright when no project bullet has a term left to add.
+- **Identity is engine-side.** The model identifies a bullet; it does not retype
+  it. The engine resolves `(section, item_id, bullet_index)`, repairs a wrong
+  index on a single-bullet item, and substitutes the master resume's own text,
+  so a paraphrase is never mistaken for a miss.
+- **Facts are checked in the text, not the declaration.** `preserved_facts` makes
+  the model enumerate what must survive before rewriting; a missing metric or a
+  lost outcome claim is a rejection, while an incomplete echo is counted, never
+  rejected.
+- **Ordering and relevance are computed locally.** Bullet order and per-item
+  priorities are derived from the accepted edits, so they cannot arrive
+  truncated or contradict the edits.
+
+Each run's diff report carries a **Bullet Edit Funnel**: what was proposed,
+applied, rejected, or skipped, a rejection-reason histogram, and the derived
+bullet ordering. Rejected edits are compute the run already paid for, so the
+loss is reported rather than logged.
 
 ### Local API
 
@@ -488,7 +552,7 @@ Important endpoints:
 | `POST /api/tailor` | Tailor selected JD text |
 | `POST /api/config/key` | Persist Gemini key |
 | `POST /api/config/groq-key` | Persist Groq key |
-| `POST /api/config/provider` | Select provider |
+| `POST /api/config/provider` | Select provider (`gemini`, `groq`, or `hybrid`) |
 | `POST /api/config/output-dir` | Set output directory |
 
 The tailoring request accepts:

@@ -30,7 +30,7 @@ class AppConfig(BaseModel):
     )
     llm_provider: str = Field(
         default="gemini",
-        description="LLM provider: 'gemini' or 'groq'",
+        description="LLM provider: 'gemini', 'groq', or 'hybrid' (Groq extracts JD keywords, Gemini plans)",
     )
     groq_api_key: Optional[str] = Field(
         default=None,

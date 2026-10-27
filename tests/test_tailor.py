@@ -8,11 +8,11 @@ from flash_resume.models.resume import MasterResume, SkillCategory
 from flash_resume.models.tailoring import (
     BulletEdit,
     BulletOrder,
-    CoreTailorPlan,
+    CoreEditPlan,
     ContentPriority,
     EvidenceAssignment,
     JDKeywords,
-    ProjectTailorPlan,
+    ProjectEditPlan,
     SkillUpdate,
     TailorPlan,
 )
@@ -137,20 +137,11 @@ def test_split_plan_merges_disjoint_core_and_project_outputs():
     resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
 
     class FakeLLM:
-        def generate_core_tailor_plan(self, **kwargs):
-            return CoreTailorPlan(summary_edit="Backend-focused summary")
+        def generate_core_edit_plan(self, **kwargs):
+            return CoreEditPlan(summary_edit="Backend-focused summary")
 
-        def generate_project_tailor_plan(self, **kwargs):
-            return ProjectTailorPlan(
-                content_priorities=[
-                    ContentPriority(
-                        section="Projects",
-                        item_id="proj_1",
-                        priority="high",
-                        reason="Strong backend evidence",
-                    )
-                ]
-            )
+        def generate_project_edit_plan(self, **kwargs):
+            return ProjectEditPlan()
 
         def generate_tailor_plan(self, **kwargs):
             raise AssertionError("legacy fallback should not be used")
@@ -160,7 +151,10 @@ def test_split_plan_merges_disjoint_core_and_project_outputs():
     )
 
     assert plan.summary_edit == "Backend-focused summary"
-    assert plan.content_priorities[0].item_id == "proj_1"
+    # Ranking is derived by the engine from the accepted edits, so nothing a
+    # specialist returns can supply it (or contradict it).
+    assert plan.content_priorities == []
+    assert plan.bullet_orders == []
 
 
 def test_split_plan_falls_back_when_specialist_call_fails():
@@ -168,11 +162,11 @@ def test_split_plan_falls_back_when_specialist_call_fails():
     resume = MasterResume.model_validate_json(example_path.read_text(encoding="utf-8"))
 
     class FakeLLM:
-        def generate_core_tailor_plan(self, **kwargs):
+        def generate_core_edit_plan(self, **kwargs):
             raise RuntimeError("provider failure")
 
-        def generate_project_tailor_plan(self, **kwargs):
-            return ProjectTailorPlan()
+        def generate_project_edit_plan(self, **kwargs):
+            return ProjectEditPlan()
 
         def generate_tailor_plan(self, **kwargs):
             return TailorPlan(summary_edit="Fallback summary")
@@ -186,11 +180,11 @@ def test_split_plan_falls_back_when_specialist_call_fails():
 
 def test_split_plan_uses_safe_metadata_fallbacks():
     class FakeLLM:
-        def generate_core_tailor_plan(self, **kwargs):
-            return CoreTailorPlan(company="Infer", role="Infer")
+        def generate_core_edit_plan(self, **kwargs):
+            return CoreEditPlan(company="Infer", role="Infer")
 
-        def generate_project_tailor_plan(self, **kwargs):
-            return ProjectTailorPlan()
+        def generate_project_edit_plan(self, **kwargs):
+            return ProjectEditPlan()
 
         def generate_tailor_plan(self, **kwargs):
             raise AssertionError("legacy fallback should not be used")
@@ -299,8 +293,6 @@ def test_apply_tailor_plan():
                 bullet_index=0,
                 original_text=original_bullet,
                 replacement_text=replacement_text,
-                keywords_added=["scalable"],
-                word_count_delta=0,
             )
         ],
     )
@@ -336,8 +328,6 @@ def test_generate_diff_markdown():
                 bullet_index=0,
                 original_text="Old bullet text here.",
                 replacement_text="New tailored bullet text here.",
-                keywords_added=["Kubernetes"],
-                word_count_delta=0,
             )
         ],
     )
@@ -919,3 +909,112 @@ def test_apply_tailor_plan_merges_into_an_existing_core_competencies_category():
     ]
     assert len(professional) == 1
     assert professional[0].items == ["Communication", "Ownership & Initiative"]
+
+
+def test_preparation_skills_do_not_repeat_the_category_label():
+    """The category heading already says "Familiarity".
+
+    Writing "(familiarity)" on every item as well made the rendered line read
+    "Familiarity: NumPy (familiarity), Pandas (familiarity)" — the same word
+    once per keyword, in a section that exists precisely to be read quickly.
+    """
+    resume = _example_resume()
+    plan = TailorPlan(preparation_skills=["TensorFlow", "NumPy"])
+
+    tailored = apply_tailor_plan(resume, plan)
+
+    familiarity = next(
+        category for category in tailored.skills if category.category == "Familiarity"
+    )
+    assert familiarity.items == ["TensorFlow", "NumPy"]
+
+
+def test_existing_familiarity_suffixes_are_removed():
+    """Older runs wrote the suffix onto every item; re-tailoring must clean it
+    up rather than keep it or double it."""
+    resume = _example_resume()
+    resume.skills.append(
+        SkillCategory(
+            category="Familiarity",
+            items=["NumPy (familiarity)", "Pandas (familiarity)"],
+        )
+    )
+    plan = TailorPlan(preparation_skills=["TensorFlow"])
+
+    tailored = apply_tailor_plan(resume, plan)
+
+    familiarity = next(
+        category for category in tailored.skills if category.category == "Familiarity"
+    )
+    assert familiarity.items == ["NumPy", "Pandas", "TensorFlow"]
+
+
+def test_stripping_the_familiarity_suffix_leaves_other_parentheses_alone():
+    """Only the exact trailing marker is removed."""
+    resume = _example_resume()
+    resume.skills.append(
+        SkillCategory(
+            category="Familiarity",
+            items=["pgvector (Hybrid Search)", "AWS (Certified)", "TensorFlow (familiarity)"],
+        )
+    )
+
+    tailored = apply_tailor_plan(resume, TailorPlan(preparation_skills=["NumPy"]))
+
+    familiarity = next(
+        category for category in tailored.skills if category.category == "Familiarity"
+    )
+    assert familiarity.items == ["pgvector (Hybrid Search)", "AWS (Certified)", "TensorFlow", "NumPy"]
+
+
+def test_familiarity_skills_are_not_scored_as_resume_evidence():
+    """A familiarity line states the candidate has encountered a tool.
+
+    Scoring it as support would let the resume claim a skill it does not have,
+    which is the failure that makes the score unusable in a live application.
+    """
+    from flash_resume.models.tailoring import JDKeywords
+    from flash_resume.services.evidence import evaluate_requirements
+
+    resume = _example_resume()
+    # Scikit-learn appears nowhere else in this resume, so the familiarity line
+    # is the only thing that could be matching it.
+    resume.skills.append(SkillCategory(category="Familiarity", items=["Scikit-learn", "Jupyter"]))
+
+    assessment = evaluate_requirements(
+        resume, JDKeywords(required_keywords=["Scikit-learn", "Jupyter"])
+    )
+    by_requirement = {match.requirement: match for match in assessment}
+
+    assert by_requirement["Scikit-learn"].status == "unsupported"
+    assert by_requirement["Scikit-learn"].evidence_locations == []
+
+
+def test_the_familiarity_suffix_is_stripped_even_without_preparation_skills():
+    """A resume can carry the old shape into a truthful run, which adds no
+    preparation skills at all."""
+    resume = _example_resume()
+    resume.skills.append(
+        SkillCategory(category="Familiarity", items=["NumPy (familiarity)"])
+    )
+
+    tailored = apply_tailor_plan(resume, TailorPlan())
+
+    familiarity = next(
+        category for category in tailored.skills if category.category == "Familiarity"
+    )
+    assert familiarity.items == ["NumPy"]
+
+
+def test_an_empty_familiarity_category_is_removed_rather_than_left_bare():
+    """An item that is nothing but the marker leaves no skill to show."""
+    resume = _example_resume()
+    resume.skills.append(
+        SkillCategory(category="Familiarity", items=["(familiarity)"])
+    )
+
+    tailored = apply_tailor_plan(resume, TailorPlan())
+
+    assert all(
+        category.category != "Familiarity" for category in tailored.skills
+    )
