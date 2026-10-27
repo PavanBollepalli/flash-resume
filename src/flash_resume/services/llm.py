@@ -24,6 +24,16 @@ from flash_resume.services.edit_contract import (
 logger = logging.getLogger("flash_resume.llm")
 
 
+# ``models.generate_content`` runs inside the SDK's automatic-function-calling
+# wrapper unless this is set, and the wrapper logs a "use Chat.send_message
+# instead" warning the first time it sees a direct call. This service never
+# passes ``tools``, so the wrapper has nothing to call and is pure overhead:
+# disabling it skips the per-call config deep-copy and function-map build too.
+# ``maximum_remote_calls`` must stay unset alongside it, or the SDK logs a
+# second warning about the contradictory pair.
+_NO_AFC = types.AutomaticFunctionCallingConfig(disable=True)
+
+
 def infer_target_role(job_description: str) -> str | None:
     """Extract a simple target-role hint for the summary prompt."""
     patterns = (
@@ -360,6 +370,7 @@ class LLMService:
                 response_schema=CoreEditPlan,
                 max_output_tokens=2048,
                 temperature=0.2,
+                automatic_function_calling=_NO_AFC,
             ),
         )
         if isinstance(response.parsed, CoreEditPlan):
@@ -388,6 +399,7 @@ class LLMService:
                 response_schema=ProjectEditPlan,
                 max_output_tokens=2048,
                 temperature=0.2,
+                automatic_function_calling=_NO_AFC,
             ),
         )
         if isinstance(response.parsed, ProjectEditPlan):
@@ -411,6 +423,7 @@ class LLMService:
                     response_schema=JDKeywords,
                     max_output_tokens=1024,
                     temperature=0.1,
+                    automatic_function_calling=_NO_AFC,
                 ),
             )
             if isinstance(response.parsed, JDKeywords):
@@ -532,6 +545,7 @@ TailorPlan, not a generic title rewrite.
                 response_schema=TailorPlan,
                 max_output_tokens=2048,
                 temperature=0.2,
+                automatic_function_calling=_NO_AFC,
             ),
         )
 
@@ -564,6 +578,7 @@ TailorPlan, not a generic title rewrite.
                 response_mime_type="application/json",
                 response_schema=MasterResume,
                 temperature=0.1,
+                automatic_function_calling=_NO_AFC,
             ),
         )
 
@@ -641,6 +656,7 @@ TailorPlan, not a generic title rewrite.
                 response_mime_type="application/json",
                 response_schema=MasterResume,
                 temperature=0.2,
+                automatic_function_calling=_NO_AFC,
             ),
         )
 
